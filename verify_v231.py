@@ -33,9 +33,11 @@ def check_status(graph, symbols):
          {r['call_id'] for r in rows if r['status'] == 'RESOLVED_INTERNAL'} == resolved),
         ('Non-internal and unknown partition unresolved sites',
          {r['call_id'] for r in rows if r['status'] != 'RESOLVED_INTERNAL'} == uncalls),
-        ('Non-internal originates from builtin or import evidence only',
+        ('Non-internal uses supported static provenance evidence',
          all(r['origin_kind'] in NON_INTERNAL.values() and not r['target_ids'] and
-             r['evidence'].get('rule') in {'UNSHADOWED_IMPORT_ORIGIN', 'UNSHADOWED_BUILTIN_NAME'}
+             r['evidence'].get('rule') in {'UNSHADOWED_IMPORT_ORIGIN', 'UNSHADOWED_BUILTIN_NAME',
+                                         'LITERAL_BUILTIN_JOIN', 'FLOW_STDLIB_JOIN',
+                                         'LITERAL_BUILTIN_METHOD', 'FLOW_BUILTIN_METHOD'}
              for r in rows if r['status'] == 'KNOWN_NON_INTERNAL')),
         ('Origin counters correct', summary.get('known_non_internal_origins') ==
          {name: origins[name] for name in ('BUILTIN', 'STDLIB', 'EXTERNAL_IMPORT')}),

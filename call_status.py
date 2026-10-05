@@ -13,6 +13,8 @@ import csv
 from pathlib import Path
 
 from import_resolution import ImportOrigins, canonical_import
+from join_origin import literal_join_receiver
+from builtin_receivers import builtin_method_origin
 from symbol_builder import save_json
 
 STATES = ('RESOLVED_INTERNAL', 'KNOWN_NON_INTERNAL', 'UNKNOWN')
@@ -48,6 +50,14 @@ class StatusAnnotator:
         for item in symbols.get('assignments', []):
             for name in item.get('targets', []):
                 self.assignments[(item['file'], item.get('scope') or '<module>', name)].append(item)
+        # Only project-defined classes; no runtime imports or attribute access.
+        self.local_classes = {(d.get('module'), d.get('qualified_name')): d
+                              for d in self.defs if d.get('kind') == 'CLASS'}
+        self.local_methods = {(d.get('module'), d.get('qualified_name'))
+                              for d in self.defs if d.get('kind') == 'METHOD'}
+        self.class_assignments = {(a['file'], a.get('scope'), t)
+                                  for a in symbols.get('assignments', [])
+                                  for t in a.get('targets', [])}
         for item in self.defs:
             scope = item.get('scope') or '<module>'
             self.declarations[(item['file'], scope, item['name'])].append(item)
@@ -142,6 +152,113 @@ class StatusAnnotator:
                 'note': 'Lexical builtin binding only; runtime namespace mutation is out of scope.'}
         return None, 'no_supported_provenance', {}
 
+    def _stdlib_join_constructor(self, call, typename):
+        """Recognize only known external types after safe import provenance."""
+        if not typename or '.' not in typename:
+            return None
+        head, tail = typename.split('.', 1)
+        imp, conflicts, _ = self._bound_at(call, head)
+        if conflicts or not imp:
+            return None
+        canonical = canonical_import(imp)
+        kinds = {o.get('kind') for o in self.origins.trace(canonical)}
+        if kinds != {'stdlib'}:
+            return None
+        # Avoid mistaking other (possibly dynamic) classes for a stdlib join.
+        fullname = canonical + '.' + tail
+        if fullname not in ('threading.Thread', 'multiprocessing.Process'):
+            return None
+        # Source-level module attribute rebinding invalidates a confident
+        # claim about which constructor or join method is invoked.
+        if any(file == call['file'] and (
+               target == typename or target == head + '.' + tail + '.join')
+               for file, _scope, target in self.class_assignments):
+            return None
+        return fullname
+
+    def _inherits_stdlib_join(self, call, name, visited=None):
+        """Check all earlier bases to avoid relying on an unknown MRO entry."""
+        visited = visited or set()
+        if self._stdlib_join_constructor(call, name):
+            return True
+        key = (call.get('module'), name)
+        definition = self.local_classes.get(key)
+        if not definition or key in visited:
+            return False
+        visited = visited | {key}
+        # A local method or class-attribute assignment can override .join().
+        if (key[0], name + '.join') in self.local_methods or (definition['file'], name, 'join') in self.class_assignments or (definition['file'], name, name + '.join') in self.class_assignments:
+            return False
+        bases = definition.get('bases') or []
+        # Python MRO searches bases left to right. If the first base is not
+        # proven, a later stdlib base cannot be certified as selected.
+        return bool(bases and self._inherits_stdlib_join(call, bases[0], visited))
+
+    def join_origin(self, call):
+        """Built-in literal or all flow candidates sourced from known stdlib join."""
+        literal = literal_join_receiver(call)
+        if literal:
+            return 'BUILTIN', 'LITERAL_BUILTIN_JOIN', {
+                'kind': 'literal_receiver', 'origin_name': f'{literal}.join',
+                'note': 'Literal str/bytes receiver, verified directly from call AST.'}
+
+        if not self.has_binding_hazards:
+            # Legacy symbol snapshots lack the facts needed to vet shadowing.
+            return None
+        callee = call.get('callee_text') or ''
+        parts = callee.split('.')
+        if len(parts) != 2 or parts[1] != 'join' or not parts[0].isidentifier():
+            return None
+        flow = call.get('flow') or {}
+        if flow.get('variable') != parts[0]:
+            return None
+        # Assigning an instance-specific join method (possibly conditionally)
+        # overrides the inherited method even if its class is known.
+        if any(file == call['file'] and target == parts[0] + '.join'
+               for file, _scope, target in self.class_assignments):
+            return None
+        binding = flow.get('binding') or {}
+        options = binding.get('options') or []
+        if binding.get('may_be_unbound') or not options:
+            return None
+        for option in options:
+            if option.get('kind') != 'constructed':
+                return None
+            name = option.get('name')
+            if not (self._stdlib_join_constructor(call, name) or
+                    self._inherits_stdlib_join(call, name)):
+                return None
+        return 'STDLIB', 'FLOW_STDLIB_JOIN', {
+            'kind': 'flow_constructor_and_inheritance',
+            'origin_name': 'threading.Thread.join or multiprocessing.Process.join',
+            'receiver_candidates': sorted({x.get('name') for x in options}),
+            'note': ('All tracked constructor candidates inherit a stdlib join method; '
+                     'dynamic reassignment and monkeypatching are outside the model.')}
+
+    def builtin_receiver_origin(self, call):
+        """Prove supported built-in method receivers, never guessing by name."""
+        if not self.has_binding_hazards:
+            return None
+        # Built-in constructors may be shadowed by project declarations,
+        # imports or parameters. A constructor-looking name is not enough.
+        def safe_constructor(name):
+            imp, conflicts, saw_import = self._bound_at(call, name)
+            return (not imp and not saw_import and not conflicts
+                    and name in ('str', 'bytes', 'list', 'dict', 'set', 'tuple'))
+        def override(receiver, method):
+            return any(file == call['file'] and target in (receiver + '.' + method,)
+                       for file, _scope, target in self.class_assignments)
+        inferred = builtin_method_origin(call, is_unshadowed_builtin=safe_constructor,
+                                         has_receiver_override=override)
+        if not inferred:
+            return None
+        kind, rule = inferred
+        return 'BUILTIN', rule, {
+            'kind': 'builtin_receiver_type', 'origin_name': kind + '.' +
+            str((call.get('callee_text') or '').split('.')[-1]),
+            'note': ('Source-backed receiver type in supported flow; dynamic mutation '
+                     'and monkeypatching outside the model.')}
+
     def annotate(self, graph):
         edge_ids = defaultdict(list)
         for edge in graph.get('edges', []):
@@ -177,9 +294,20 @@ class StatusAnnotator:
                                                    'May-call targets; completeness and runtime dispatch not proven.')})
             else:
                 category, rule, evidence = self.non_internal_origin(call)
+                certainty = 'PROVEN_STATIC_ORIGIN'
+                if category is None:
+                    inferred = self.join_origin(call)
+                    if inferred:
+                        category, rule, evidence = inferred
+                        if rule == 'FLOW_STDLIB_JOIN':
+                            certainty = 'INFERRED_STATIC_ORIGIN'
+                if category is None:
+                    inferred = self.builtin_receiver_origin(call)
+                    if inferred:
+                        category, rule, evidence = inferred
                 if category:
                     row.update(status='KNOWN_NON_INTERNAL', origin_kind=category,
-                               certainty='PROVEN_STATIC_ORIGIN', evidence={'rule': rule, **evidence})
+                               certainty=certainty, evidence={'rule': rule, **evidence})
                 else:
                     row.update(status='UNKNOWN', origin_kind='UNKNOWN', certainty='UNVERIFIED',
                                evidence={'rule': rule, **evidence,

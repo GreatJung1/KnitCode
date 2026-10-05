@@ -12,6 +12,7 @@ import csv
 from pathlib import Path
 import sys
 from import_resolution import canonical_import, ImportOrigins
+from join_origin import literal_join_receiver
 
 CATEGORIES = {
     'BUILTIN': 'Python 내장 함수',
@@ -161,6 +162,11 @@ class Classifier:
             if category == 'INTERNAL_CANDIDATE':
                 # There may not be an available project-local symbol or call edge.
                 rule = 'import_points_to_project'
+        elif literal_join_receiver(call):
+            # Python string/bytes literal methods are builtin, not a missing
+            # definition from the analyzed repository.
+            category, rule, certainty = 'BUILTIN_METHOD', 'literal_join_receiver', 'high'
+            evid['receiver_type'] = literal_join_receiver(call)
         elif len(parts) == 1 and head in dir(builtins) and not self._shadowed(call, head):
             category, rule, certainty = 'BUILTIN', 'python_builtin_unshadowed', 'high'
         elif len(parts) == 1:

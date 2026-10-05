@@ -107,6 +107,26 @@ class FlowAnalyzer:
     def _get(self, expr: ast.AST | None, state: dict[str, dict]) -> dict:
         line = getattr(expr, 'lineno', None)
         if isinstance(expr, ast.Call):
+            # Narrow return-type propagation for built-in immutable string/
+            # bytes methods (e.g. s = ','.join(xs); s.strip()).
+            if isinstance(expr.func, ast.Attribute) and expr.func.attr in {
+                    'join', 'strip', 'lstrip', 'rstrip', 'replace', 'lower', 'upper', 'format', 'title'}:
+                receiver = expr.func.value
+                proven = None
+                if isinstance(receiver, ast.Constant) and isinstance(receiver.value, str):
+                    proven = 'str'
+                elif isinstance(receiver, ast.Constant) and isinstance(receiver.value, bytes):
+                    proven = 'bytes'
+                elif isinstance(receiver, ast.Name):
+                    bound = state.get(receiver.id) or {}
+                    opts = bound.get('options', [])
+                    if not bound.get('may_be_unbound') and opts and all(
+                            x.get('kind') == 'builtin_instance' and x.get('name') in ('str', 'bytes')
+                            for x in opts):
+                        kinds = {x['name'] for x in opts}
+                        proven = kinds.pop() if len(kinds) == 1 else None
+                if proven:
+                    return _value('builtin_instance', proven, line)
             if isinstance(expr.func, ast.Name):
                 bound = state.get(expr.func.id)
                 if bound:
@@ -121,6 +141,14 @@ class FlowAnalyzer:
                     return {'options': options or _value('unknown', line)['options'],
                             'may_be_unbound': False}
             return _value('constructed', expr_name(expr.func), line)
+        # Track definite built-in instance types from literal expressions.
+        if isinstance(expr, ast.Constant):
+            if isinstance(expr.value, str):
+                return _value('builtin_instance', 'str', line)
+            if isinstance(expr.value, bytes):
+                return _value('builtin_instance', 'bytes', line)
+        if isinstance(expr, ast.JoinedStr):
+            return _value('builtin_instance', 'str', line)
         if isinstance(expr, ast.Name):
             # Capture the value NOW; future reassignment must not rewrite aliases.
             return deepcopy(state[expr.id]) if expr.id in state else _value('reference', expr.id, line)

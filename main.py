@@ -8,9 +8,11 @@ from graph_builder import build_graph
 from graph_report import write_html
 from unresolved_classifier import reclassify_graph, write_classification
 from call_status import annotate_call_statuses, write_call_statuses
+from dependency_analysis import analyze_dependencies, write_dependency_results
 
 
-def run(repo: str | Path, output_dir: str | Path = 'output'):
+def run(repo: str | Path, output_dir: str | Path = 'output', *,
+        analyze_deps: bool = False, dep_roots=(), max_dep_files: int = 300):
     ast_data = scan_repository(repo)
     try:
         head = subprocess.run(
@@ -31,6 +33,10 @@ def run(repo: str | Path, output_dir: str | Path = 'output'):
     write_classification(graph, out)
     write_call_statuses(graph, out)
     write_html(graph, out / 'report.html')
+    if analyze_deps:
+        dep_result = analyze_dependencies(symbols, graph, roots=dep_roots, max_files=max_dep_files)
+        write_dependency_results(dep_result, out)
+        print('Dependency source analysis:', dep_result['summary'])
     print('=== KnitCode static call graph v2.4 (parameter type hints) ===')
     print(f"Commit          : {head or 'not a git repo'}")
     print(f"Python files    : {ast_data['python_file_count']}")
@@ -65,5 +71,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Analyze a Python repo statically (never execute target code)')
     parser.add_argument('repo', help='Directory of Python repository (e.g. ./Sublist3r)')
     parser.add_argument('--output-dir', default='output')
+    parser.add_argument('--analyze-deps', action='store_true',
+                        help='Inspect stdlib and installed/external imported source using AST only')
+    parser.add_argument('--dep-root', action='append', default=[],
+                        help='Extra dependency source root (site-packages or one package); repeatable')
+    parser.add_argument('--max-dep-files', type=int, default=300,
+                        help='Bound inspected dependency Python source files (default 300)')
     args = parser.parse_args()
-    run(args.repo, args.output_dir)
+    run(args.repo, args.output_dir, analyze_deps=args.analyze_deps,
+        dep_roots=args.dep_root, max_dep_files=max(1, args.max_dep_files))
