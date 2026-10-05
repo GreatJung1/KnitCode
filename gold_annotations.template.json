@@ -1,0 +1,79 @@
+{
+  "purpose": "정답 초안. 이 파일은 분석기가 생성한 결과를 독립적으로 검증한 Ground Truth가 아님.",
+  "how_to_use": "소스코드를 직접 검토하고 해당 site가 맞으면 reviewed=true; 다르면 targets를 수정해 true로 설정",
+  "sites": [
+    {
+      "call_id": "CALL:Sublist3r/subbrute/subbrute.py:591:17:186",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:subbrute.subbrute.extract_subdomains"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/subbrute/subbrute.py:596:18:189",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:subbrute.subbrute.check_open"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/subbrute/subbrute.py:605:12:191",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:subbrute.subbrute.error"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/subbrute/subbrute.py:612:12:193",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:subbrute.subbrute.error"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/subbrute/subbrute.py:633:12:198",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:subbrute.subbrute.print_target"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/sublist3r.py:1006:4:312",
+      "edge_type": "CALLS",
+      "targets": [
+        "FUNCTION:sublist3r.interactive"
+      ],
+      "reviewed": false,
+      "review_note": "Sublist3r 소스에서 해당 줄과 실제 함수 정의/스코프를 확인한 후 true로 변경"
+    },
+    {
+      "call_id": "CALL:Sublist3r/sublist3r.py:943:13:287",
+      "edge_type": "INSTANTIATES",
+      "targets": [
+        "CLASS:sublist3r.AskEnum",
+        "CLASS:sublist3r.BaiduEnum",
+        "CLASS:sublist3r.BingEnum",
+        "CLASS:sublist3r.CrtSearch",
+        "CLASS:sublist3r.DNSdumpster",
+        "CLASS:sublist3r.GoogleEnum",
+        "CLASS:sublist3r.NetcraftEnum",
+        "CLASS:sublist3r.PassiveDNS",
+        "CLASS:sublist3r.ThreatCrowd",
+        "CLASS:sublist3r.Virustotal",
+        "CLASS:sublist3r.YahooEnum"
+      ],
+      "reviewed": false,
+      "review_note": "supported_engines 딕셔너리, 조건 분기, append, 컴프리헨션을 원본 소스에서 확인해야 함"
+    }
+  ]
+}
