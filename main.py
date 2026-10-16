@@ -12,8 +12,9 @@ from dependency_analysis import analyze_dependencies, write_dependency_results
 
 
 def run(repo: str | Path, output_dir: str | Path = 'output', *,
-        analyze_deps: bool = False, dep_roots=(), max_dep_files: int = 300):
-    ast_data = scan_repository(repo)
+        analyze_deps: bool = False, dep_roots=(), max_dep_files: int = 300,
+        source_roots: list[str] | None = None):
+    ast_data = scan_repository(repo, source_roots=source_roots)
     try:
         head = subprocess.run(
             ['git', '-C', str(Path(repo).resolve()), 'rev-parse', 'HEAD'],
@@ -37,7 +38,7 @@ def run(repo: str | Path, output_dir: str | Path = 'output', *,
         dep_result = analyze_dependencies(symbols, graph, roots=dep_roots, max_files=max_dep_files)
         write_dependency_results(dep_result, out)
         print('Dependency source analysis:', dep_result['summary'])
-    print('=== KnitCode static call graph v2.4 (parameter type hints) ===')
+    print('=== KnitCode static call graph v2.5 (static object-flow extension) ===')
     print(f"Commit          : {head or 'not a git repo'}")
     print(f"Python files    : {ast_data['python_file_count']}")
     print(f"Parse errors    : {len(ast_data['parse_errors'])}")
@@ -50,6 +51,11 @@ def run(repo: str | Path, output_dir: str | Path = 'output', *,
     print(f"Module-level resolved sites: {graph['module_level_resolved_sites']}")
     print(f"Collection indirect sites   : {graph['collection_indirect_resolved_sites']}")
     print(f"Graph edges     : {graph['edge_count']} (CONTAINS/INHERITS/CALLS/INSTANTIATES)")
+    flow_stats = graph.get('object_flow_stats') or {}
+    if flow_stats:
+        print(f"Object Flow     : {flow_stats.get('expression_steps', 0)} expression steps, "
+              f"{flow_stats.get('recursion_or_budget_cutoffs', 0)} budget/recursion cutoffs "
+              f"(entry limit {flow_stats.get('root_step_limit', 0)})")
     print(f"Ambiguous sites : {len(graph['ambiguous_calls'])} (multiple may-call candidates)")
     print(f"Conditional     : {len(graph['conditional_calls'])} (may be unbound)")
     print("Call-site status:")
@@ -71,6 +77,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Analyze a Python repo statically (never execute target code)')
     parser.add_argument('repo', help='Directory of Python repository (e.g. ./Sublist3r)')
     parser.add_argument('--output-dir', default='output')
+    parser.add_argument('--source-root', action='append', default=None,
+                        help='Repository-relative import root (e.g. src). Repeat if needed; '
+                             'use "." to disable automatic src-layout detection.')
     parser.add_argument('--analyze-deps', action='store_true',
                         help='Inspect stdlib and installed/external imported source using AST only')
     parser.add_argument('--dep-root', action='append', default=[],
@@ -79,4 +88,5 @@ if __name__ == '__main__':
                         help='Bound inspected dependency Python source files (default 300)')
     args = parser.parse_args()
     run(args.repo, args.output_dir, analyze_deps=args.analyze_deps,
-        dep_roots=args.dep_root, max_dep_files=max(1, args.max_dep_files))
+        dep_roots=args.dep_root, max_dep_files=max(1, args.max_dep_files),
+        source_roots=args.source_root)

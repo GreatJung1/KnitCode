@@ -1,0 +1,480 @@
+{
+  "summary": {
+    "total": 22,
+    "passed": 22,
+    "regression_passed": 8,
+    "regression_total": 8,
+    "gap_passed": 14,
+    "gap_total": 14
+  },
+  "results": [
+    {
+      "id": "01_direct_instance",
+      "category": "regression",
+      "description": "Direct instance dispatch",
+      "focus_callee": "x.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "02_param_annotation",
+      "category": "regression",
+      "description": "Parameter annotation-based dispatch",
+      "focus_callee": "worker.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "03_if_else_candidates",
+      "category": "regression",
+      "description": "Join two possible receiver types",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "04_import_alias",
+      "category": "regression",
+      "description": "Cross-file alias resolution",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:workers.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:workers.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "05_string_join",
+      "category": "regression",
+      "description": "Do not link builtin str.join internally",
+      "focus_callee": "s.join",
+      "expected_targets": [],
+      "expected_status": "KNOWN_NON_INTERNAL",
+      "passed": true,
+      "observed_targets": [],
+      "observed_status": "KNOWN_NON_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "06_custom_join",
+      "category": "regression",
+      "description": "Do not mistake user-defined join for builtin str.join",
+      "focus_callee": "worker.join",
+      "expected_targets": [
+        "METHOD:app.Worker.join"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.join"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "07_reassign_receiver",
+      "category": "regression",
+      "description": "Reassignment supersedes previous receiver type",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.B.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.B.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "08_class_collection",
+      "category": "regression",
+      "description": "Classes stored in a collection and looped",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "09_annotated_factory",
+      "category": "gap",
+      "description": "Interprocedural return annotation",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "10_inferred_factory",
+      "category": "gap",
+      "description": "Infer factory result from return AST",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "11_branch_return",
+      "category": "gap",
+      "description": "Return summary with two classes",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.A.run",
+        "METHOD:app.B.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "12_cross_module_factory",
+      "category": "gap",
+      "description": "Factory return across module boundary",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:workers.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:workers.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "13_instance_field",
+      "category": "gap",
+      "description": "Receiver type stored in self.worker",
+      "focus_callee": "self.worker.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "METHOD:app.Controller.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "14_field_factory",
+      "category": "gap",
+      "description": "Interprocedural factory plus self.field tracking",
+      "focus_callee": "self.worker.run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "METHOD:app.Controller.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "15_chained_constructor",
+      "category": "gap",
+      "description": "Chained constructor method invocation",
+      "focus_callee": "Worker().run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "16_chained_factory",
+      "category": "gap",
+      "description": "Chained factory method invocation",
+      "focus_callee": "make().run",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "17_bound_method",
+      "category": "gap",
+      "description": "Bound method stored as first-class value",
+      "focus_callee": "f",
+      "expected_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "18_callable_instance",
+      "category": "gap",
+      "description": "Instance implementing __call__",
+      "focus_callee": "obj",
+      "expected_targets": [
+        "METHOD:app.Worker.__call__"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.Worker.__call__"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "19_c3_mro_diamond",
+      "category": "gap",
+      "description": "C3 MRO diamond inheritance",
+      "focus_callee": "obj.run",
+      "expected_targets": [
+        "METHOD:app.C.run"
+      ],
+      "passed": true,
+      "observed_targets": [
+        "METHOD:app.C.run"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": "FUNCTION:app.execute",
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_FUNCTION",
+      "parse_errors": []
+    },
+    {
+      "id": "20_default_arg_definition_time",
+      "category": "gap",
+      "description": "Default expression evaluated at function definition",
+      "focus_callee": "make",
+      "expected_targets": [
+        "FUNCTION:app.make"
+      ],
+      "expected_caller": "__MODULE__",
+      "passed": true,
+      "observed_targets": [
+        "FUNCTION:app.make"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": null,
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "MODULE_LEVEL",
+      "parse_errors": []
+    },
+    {
+      "id": "21_decorator_definition_time",
+      "category": "gap",
+      "description": "Decorator factory evaluated at function definition",
+      "focus_callee": "decorate",
+      "expected_targets": [
+        "FUNCTION:app.decorate"
+      ],
+      "expected_caller": "__MODULE__",
+      "passed": true,
+      "observed_targets": [
+        "FUNCTION:app.decorate"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": null,
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "MODULE_LEVEL",
+      "parse_errors": []
+    },
+    {
+      "id": "22_class_body_context",
+      "category": "gap",
+      "description": "Method in class body evaluated as part of class creation",
+      "focus_callee": "make",
+      "expected_targets": [
+        "FUNCTION:app.make"
+      ],
+      "expected_scope_context": "IN_CLASS_BODY",
+      "passed": true,
+      "observed_targets": [
+        "FUNCTION:app.make"
+      ],
+      "observed_status": "RESOLVED_INTERNAL",
+      "observed_caller": null,
+      "targets_ok": true,
+      "caller_ok": true,
+      "status_ok": true,
+      "scope_ok": true,
+      "observed_scope_context": "IN_CLASS_BODY",
+      "parse_errors": []
+    }
+  ]
+}

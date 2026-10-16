@@ -1,0 +1,20 @@
+{
+  "repository": "fixture_click",
+  "commit": null,
+  "old_resolved": 0,
+  "new_resolved": 1,
+  "newly_resolved": 1,
+  "lost_resolutions": 0,
+  "changed_targets": 0,
+  "renaming_only": 0,
+  "substantive_changes": 0,
+  "newly_resolved_by_previous_status": {
+    "KNOWN_NON_INTERNAL/EXTERNAL_IMPORT": 1
+  },
+  "newly_resolved_by_code_area": {
+    "test": 1
+  },
+  "unverified_target_nodes": 0,
+  "sample_size": 1,
+  "source_excerpts_available": 1
+}

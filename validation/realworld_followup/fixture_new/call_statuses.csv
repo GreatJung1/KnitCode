@@ -1,0 +1,2 @@
+﻿call_id,file,line,caller_id,callee_text,scope_context,status,origin_kind,certainty,legacy_category,target_ids,evidence
+CALL:fixture_click/tests/test_example.py:4:11:0,fixture_click/tests/test_example.py,4,FUNCTION:tests.test_example.demo,click.echo,IN_FUNCTION,RESOLVED_INTERNAL,INTERNAL,SOURCE_BACKED,,FUNCTION:click.utils.echo,"{'kind': 'graph_edges', 'rules': ['imported_module'], 'coverage_caveat': 'May-call targets; completeness and runtime dispatch not proven.'}"

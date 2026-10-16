@@ -1,0 +1,86 @@
+{
+  "repository": "14_field_factory",
+  "commit": null,
+  "summary": {
+    "total": 3,
+    "statuses": {
+      "RESOLVED_INTERNAL": 3,
+      "KNOWN_NON_INTERNAL": 0,
+      "UNKNOWN": 0
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "calls": [
+    {
+      "call_id": "CALL:14_field_factory/app.py:5:11:0",
+      "file": "14_field_factory/app.py",
+      "line": 5,
+      "callee_text": "Worker",
+      "caller_id": "FUNCTION:app.make",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.Worker"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:14_field_factory/app.py:9:22:1",
+      "file": "14_field_factory/app.py",
+      "line": 9,
+      "callee_text": "make",
+      "caller_id": "METHOD:app.Controller.__init__",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "FUNCTION:app.make"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:14_field_factory/app.py:11:8:2",
+      "file": "14_field_factory/app.py",
+      "line": 11,
+      "callee_text": "self.worker.run",
+      "caller_id": "METHOD:app.Controller.execute",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.Worker.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "MAY_CALL",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "object_flow_may_call"
+        ],
+        "coverage_caveat": "Partial/multiple/conditional candidates."
+      }
+    }
+  ]
+}

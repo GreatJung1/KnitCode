@@ -1,0 +1,84 @@
+{
+  "sublist3r": {
+    "baseline_resolved": 92,
+    "new_resolved": 92,
+    "baseline_statuses": {
+      "KNOWN_NON_INTERNAL": 212,
+      "RESOLVED_INTERNAL": 92,
+      "UNKNOWN": 210
+    },
+    "new_statuses": {
+      "KNOWN_NON_INTERNAL": 212,
+      "RESOLVED_INTERNAL": 92,
+      "UNKNOWN": 210
+    },
+    "new_edges": 0,
+    "lost_edges": 0,
+    "lost_edge_details": [],
+    "object_flow_stats": {
+      "expression_steps": 8952,
+      "root_step_limit": 6000,
+      "recursion_or_budget_cutoffs": 0,
+      "generic_context_fallbacks": 0,
+      "summarized_functions": 98,
+      "managed_calls": 131
+    }
+  },
+  "requests": {
+    "baseline_resolved": 1009,
+    "new_resolved": 1054,
+    "baseline_statuses": {
+      "KNOWN_NON_INTERNAL": 967,
+      "UNKNOWN": 711,
+      "RESOLVED_INTERNAL": 1009
+    },
+    "new_statuses": {
+      "KNOWN_NON_INTERNAL": 967,
+      "UNKNOWN": 666,
+      "RESOLVED_INTERNAL": 1054
+    },
+    "new_edges": 51,
+    "lost_edges": 0,
+    "lost_edge_details": [],
+    "object_flow_stats": {
+      "expression_steps": 203857,
+      "root_step_limit": 6000,
+      "recursion_or_budget_cutoffs": 0,
+      "generic_context_fallbacks": 6,
+      "summarized_functions": 572,
+      "managed_calls": 306
+    }
+  },
+  "click": {
+    "baseline_resolved": 3075,
+    "new_resolved": 3096,
+    "baseline_statuses": {
+      "KNOWN_NON_INTERNAL": 2274,
+      "UNKNOWN": 1735,
+      "RESOLVED_INTERNAL": 3075
+    },
+    "new_statuses": {
+      "KNOWN_NON_INTERNAL": 2274,
+      "UNKNOWN": 1714,
+      "RESOLVED_INTERNAL": 3096
+    },
+    "new_edges": 26,
+    "lost_edges": 1,
+    "lost_edge_details": [
+      [
+        "CALL:Click/src/click/types.py:166:19:19",
+        "METHOD:click.types.ParamType.__call__",
+        "METHOD:click.types.ParamType.convert",
+        "CALLS"
+      ]
+    ],
+    "object_flow_stats": {
+      "expression_steps": 250676,
+      "root_step_limit": 6000,
+      "recursion_or_budget_cutoffs": 128,
+      "generic_context_fallbacks": 6,
+      "summarized_functions": 1041,
+      "managed_calls": 534
+    }
+  }
+}

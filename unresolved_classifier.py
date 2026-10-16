@@ -145,7 +145,10 @@ class Classifier:
         imports = self._imports_at(call) if call else {}
         reason = item.get('reason', '')
         evid = {'original_reason': reason}
-        scope_context = 'MODULE_LEVEL' if in_module else 'IN_FUNCTION'
+        phase = item.get('execution_phase', 'unspecified')
+        scope_context = ('IN_CLASS_BODY' if phase == 'class_body' else
+                         'IN_LAMBDA' if phase == 'lambda_body' else
+                         'MODULE_LEVEL' if in_module else 'IN_FUNCTION')
         category, rule, certainty = 'DYNAMIC_UNKNOWN', 'insufficient_evidence', 'low'
         candidates = []
 

@@ -1,0 +1,128 @@
+{
+  "repository": "fixture_click",
+  "source_roots": [
+    "src"
+  ],
+  "analysis_sources": {
+    "fixture_click/src/click/__init__.py": "from .utils import echo\n",
+    "fixture_click/src/click/utils.py": "def echo(value):\n    return value\n",
+    "fixture_click/tests/test_example.py": "import click\n\ndef demo():\n    return click.echo(\"Hello\")\n"
+  },
+  "symbol_count": 2,
+  "source_modules": [
+    "click",
+    "click.utils",
+    "tests.test_example"
+  ],
+  "overload_declarations": [],
+  "symbols": [
+    {
+      "id": "FUNCTION:click.utils.echo",
+      "kind": "FUNCTION",
+      "name": "echo",
+      "qualified_name": "echo",
+      "canonical_name": "click.utils.echo",
+      "module": "click.utils",
+      "file": "fixture_click/src/click/utils.py",
+      "scope": "<module>",
+      "parameters": [
+        "value"
+      ],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 1,
+      "column": 0,
+      "end_line": 2,
+      "end_column": 16
+    },
+    {
+      "id": "FUNCTION:tests.test_example.demo",
+      "kind": "FUNCTION",
+      "name": "demo",
+      "qualified_name": "demo",
+      "canonical_name": "tests.test_example.demo",
+      "module": "tests.test_example",
+      "file": "fixture_click/tests/test_example.py",
+      "scope": "<module>",
+      "parameters": [],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 3,
+      "column": 0,
+      "end_line": 4,
+      "end_column": 30
+    }
+  ],
+  "imports": [
+    {
+      "id": "IMPORT:fixture_click/src/click/__init__.py:1:0",
+      "file": "fixture_click/src/click/__init__.py",
+      "module": "click",
+      "type": "IMPORT_FROM",
+      "imported_module": "utils",
+      "imported_name": "echo",
+      "local_name": "echo",
+      "imported_canonical": "utils.echo",
+      "scope": "<module>",
+      "level": 1,
+      "control_depth": 0,
+      "line": 1,
+      "column": 0,
+      "end_line": 1,
+      "end_column": 23
+    },
+    {
+      "id": "IMPORT:fixture_click/tests/test_example.py:1:0",
+      "file": "fixture_click/tests/test_example.py",
+      "module": "tests.test_example",
+      "type": "IMPORT",
+      "imported_module": "click",
+      "imported_name": null,
+      "local_name": "click",
+      "imported_canonical": "click",
+      "scope": "<module>",
+      "level": 0,
+      "control_depth": 0,
+      "line": 1,
+      "column": 0,
+      "end_line": 1,
+      "end_column": 12
+    }
+  ],
+  "calls": [
+    {
+      "id": "CALL:fixture_click/tests/test_example.py:4:11:0",
+      "file": "fixture_click/tests/test_example.py",
+      "module": "tests.test_example",
+      "caller_id": "FUNCTION:tests.test_example.demo",
+      "scope": "demo",
+      "callee_text": "click.echo",
+      "syntax_type": "ATTRIBUTE",
+      "positional_argument_count": 1,
+      "keyword_arguments": [],
+      "source": "click.echo(\"Hello\")",
+      "flow": {
+        "variable": "click",
+        "binding": null,
+        "tracked": true
+      },
+      "line": 4,
+      "column": 11,
+      "end_line": 4,
+      "end_column": 30
+    }
+  ],
+  "assignments": [],
+  "binding_hazards": [],
+  "commit": null
+}

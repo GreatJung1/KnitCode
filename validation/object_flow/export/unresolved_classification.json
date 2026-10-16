@@ -1,0 +1,34 @@
+{
+  "repository": "14_field_factory",
+  "summary": {
+    "total": 0,
+    "categories": {
+      "BUILTIN": 0,
+      "BUILTIN_METHOD": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0,
+      "INTERNAL_CANDIDATE": 0,
+      "INDIRECT_CALL": 0,
+      "FIELD_CHAIN": 0,
+      "RECEIVER_UNKNOWN": 0,
+      "MODULE_LEVEL": 0,
+      "DYNAMIC_UNKNOWN": 0
+    },
+    "original_reasons": {},
+    "scope_context": {},
+    "category_labels": {
+      "BUILTIN": "Python 내장 함수",
+      "BUILTIN_METHOD": "Python 기본 자료형 메서드 추정",
+      "STDLIB": "표준 라이브러리",
+      "EXTERNAL_IMPORT": "외부 의존성(import 근거)",
+      "INTERNAL_CANDIDATE": "내부 호출 후보(미검증)",
+      "INDIRECT_CALL": "변수에 담긴 함수/클래스 간접 호출",
+      "FIELD_CHAIN": "객체 필드의 연속 접근",
+      "RECEIVER_UNKNOWN": "객체 타입 또는 메서드 불명",
+      "MODULE_LEVEL": "최상위 호출의 출발점 미지원",
+      "DYNAMIC_UNKNOWN": "동적 호출/근거 부족"
+    },
+    "warning": "Classification is heuristic triage, not verified internal-call ground truth. No external code was executed; confidence is not a probability."
+  },
+  "calls": []
+}

@@ -40,10 +40,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('v1', type=Path, help='v1 output/graph_result.json')
     parser.add_argument('v2', type=Path, help='v2 output/graph_result.json')
+    parser.add_argument('--output', type=Path, default=None, help='Save the complete UTF-8 JSON directly to a file')
+    parser.add_argument('--summary', action='store_true', help='Print only change counts, avoiding huge console output')
     args = parser.parse_args()
     result = compare(json.loads(args.v1.read_text(encoding='utf-8')),
                      json.loads(args.v2.read_text(encoding='utf-8')))
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    if args.summary:
+        print(json.dumps({key: len(result[key]) for key in ('newly_resolved', 'lost_resolutions', 'changed_targets')}, ensure_ascii=True, indent=2))
+    elif not args.output:
+        # ASCII-safe fallback for legacy Windows CP949 terminals. --output is
+        # preferred for the full Unicode/large-result comparison.
+        print(json.dumps(result, ensure_ascii=True, indent=2))
 
 if __name__ == '__main__':
     main()

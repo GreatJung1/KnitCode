@@ -1,0 +1,304 @@
+--- v24/ast_parser.py
++++ v25/ast_parser.py
+@@ -68,7 +68,10 @@
+         data = {"name": node.name, "qualified_name": qname,
+                 "scope": self.scope, "control_depth": self.control_depth, "decorators": [text_of(self.source, x) for x in node.decorator_list], **loc(node)}
+         if kind == 'CLASS':
+-            data['bases'] = [expr_name(x) or text_of(self.source, x) for x in node.bases]
++            # Preserve dynamic/subscripted bases: erasing syntax can falsely
++            # turn Base[T] (possibly __mro_entries__) into the class Base.
++            data['bases'] = [text_of(self.source, x) for x in node.bases]
++            data['class_keywords'] = [kw.arg for kw in node.keywords]
+             self.classes.append(data)
+         else:
+             args = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+--- v24/call_status.py
++++ v25/call_status.py
+@@ -284,7 +284,7 @@
+                 partial = (cid in conditional or cid in ambiguous or
+                            any('partial_type_candidates' in (e.get('evidence', {}).get('rule') or '') or
+                                e.get('evidence', {}).get('may_be_unbound') or
+-                               e.get('evidence', {}).get('certainty') == 'declared_parameter_type_may_call'
++                               e.get('evidence', {}).get('certainty') in ('declared_parameter_type_may_call', 'receiver_hierarchy_may_call')
+                                for e in edges))
+                 row.update(status='RESOLVED_INTERNAL', origin_kind='INTERNAL',
+                            certainty='MAY_CALL' if partial else 'SOURCE_BACKED',
+--- v24/graph_builder.py
++++ v25/graph_builder.py
+@@ -4,6 +4,7 @@
+ No cross-file name-only guessing: external/unknown calls remain unresolved.
+ """
+ from __future__ import annotations
++import ast
+ from collections import defaultdict
+ from import_resolution import canonical_import, ImportOrigins
+ from typing import Any
+@@ -25,6 +26,7 @@
+         self.classes = {}
+         self.assignments = defaultdict(list)
+         self.imports = defaultdict(list)
++        self._mro_cache = {}
+         for s in self.symbols:
+             self.by_canonical[s['canonical_name']].append(s)
+             self.by_id[s['id']] = s
+@@ -71,31 +73,189 @@
+                 return self.classes[candidate]
+         return None
+ 
++    def _base_order(self, cls: dict) -> tuple[list[str], bool]:
++        """Keep declaration order and uncertainty; never drop an opaque base."""
++        imports = self.imports_at({"file": cls['file'], "module": cls['module'], "scope": cls['scope'] or '<module>', "line": cls.get('line') or 0})
++        # Base expressions execute at class definition time, unlike a method
++        # body which can observe imports performed later during initialization.
++        for imp in self.imports[cls['file']]:
++            if (imp.get('line') or 0) >= (cls.get('line') or 0):
++                imports.pop(imp.get('local_name'), None)
++        found, complete = [], True
++        for base in cls.get('bases', []):
++            try:
++                expr = ast.parse(base or '', mode='eval').body
++            except SyntaxError:
++                complete = False
++                continue
++            if not isinstance(expr, (ast.Name, ast.Attribute)):
++                complete = False
++                continue
++            base_candidates = self._resolve_reference(str(base), cls['module'], imports)
++            # Resolve nested classes in their enclosing lexical namespace.
++            if not base_candidates and cls.get('scope') != '<module>':
++                scope = (cls.get('scope') or '').split('.')
++                while scope and not base_candidates:
++                    base_candidates = self._lookup('.'.join([cls['module'], *scope, base]))
++                    scope.pop()
++            context = {**cls, 'scope': cls.get('scope') or '<module>'}
++            root = base.split('.')[0]
++            rebound = self._find_binding(context, root)
++            if rebound:
++                complete = False
++            elif len(base_candidates) == 1 and base_candidates[0]['kind'] == 'CLASS':
++                candidate = base_candidates[0]
++                if candidate['file'] == cls['file'] and candidate['line'] >= cls['line']:
++                    complete = False
++                else:
++                    found.append(candidate['canonical_name'])
++            elif base == 'object' and root not in imports and not base_candidates:
++                found.append('builtins.object')
++            else:
++                complete = False
++        return found, complete
++
+     def _get_bases(self, cls: dict, seen: set[str] | None = None) -> list[dict]:
+-        imports = self.imports_at({"file": cls['file'], "module": cls['module'], "scope": cls['scope'] or '<module>', "line": cls.get('line') or 0})
+-        found = []
+-        for base in cls.get('bases', []):
+-            if not base:
+-                continue
+-            base_candidates = self._resolve_reference(str(base), cls['module'], imports)
+-            found.extend(s for s in base_candidates if s['kind'] == 'CLASS')
+-        return found
++        names, _ = self._base_order(cls)
++        return [self.classes[n] for n in names if n in self.classes]
++
++    def _mro(self, cls: dict, active: frozenset[str] = frozenset()) -> tuple[list[str], str]:
++        """C3: L(C) = C + merge(L(B1), ..., L(Bn), [B1,...,Bn]).
++
++        Unknown hierarchy and invalid hierarchy are distinct. Neither permits
++        a DFS fallback. object participates in merging but is never a node.
++        """
++        key = cls['canonical_name']
++        if key in active:
++            return [], 'invalid_cycle'
++        if key in self._mro_cache:
++            return self._mro_cache[key]
++        if cls.get('class_keywords') or cls.get('decorators'):
++            result = ([], 'unknown_class_customization')
++        else:
++            bases, complete = self._base_order(cls)
++            if not complete:
++                result = ([], 'unknown_base')
++            elif len(set(bases)) != len(bases):
++                result = ([], 'invalid_duplicate_base')
++            else:
++                bases = bases or ['builtins.object']
++                sequences, reason = [], 'complete'
++                for base in bases:
++                    order, status = ((['builtins.object'], 'complete') if base == 'builtins.object'
++                                     else self._mro(self.classes[base], active | {key}))
++                    if status != 'complete':
++                        reason = status
++                        break
++                    sequences.append(list(order))
++                if reason != 'complete':
++                    result = ([], reason)
++                else:
++                    sequences.append(list(bases))
++                    order = [key]
++                    while any(sequences):
++                        sequences = [s for s in sequences if s]
++                        head = next((s[0] for s in sequences
++                                     if not any(s[0] in t[1:] for t in sequences)), None)
++                        if head is None:
++                            reason = 'invalid_c3_conflict'
++                            break
++                        order.append(head)
++                        for seq in sequences:
++                            if seq[0] == head:
++                                seq.pop(0)
++                    result = (order if reason == 'complete' else [], reason)
++        self._mro_cache[key] = result
++        return result
++
++    def _local_method(self, cls: dict, name: str) -> tuple[list[dict], bool]:
++        local = self._lookup(cls['canonical_name'] + '.' + name)
++        assignments = [a for a in self.assignments.get((cls['file'], cls['qualified_name']), [])
++                       if name in a.get('targets', [])]
++        # Non-method class attributes and descriptors stop inheritance lookup.
++        if assignments and (not local or max(a['line'] for a in assignments) >= max(s['line'] for s in local)):
++            return [], True
++        if local:
++            methods = [s for s in local if s['kind'] == 'METHOD'
++                       and not s.get('control_depth')
++                       and all(d in ('staticmethod', 'classmethod') for d in s.get('decorators', []))]
++            return methods, True
++        return [], False
++
++    def _lookup_mro(self, order: list[str], name: str) -> tuple[list[dict], list[str]]:
++        path = []
++        for key in order:
++            path.append(key)
++            if key == 'builtins.object':
++                break
++            found, shadows = self._local_method(self.classes[key], name)
++            if shadows:
++                return found, path
++        return [], path
+ 
+     def _find_method(self, cls: dict, name: str, seen: set[str] | None = None, include_self: bool = True) -> tuple[list[dict], list[str]]:
+-        seen = set() if seen is None else seen
+-        if cls['id'] in seen:
+-            return [], []
+-        seen.add(cls['id'])
+-        path = [cls['canonical_name']]
+-        if include_self:
+-            local = [s for s in self._lookup(cls['canonical_name'] + '.' + name) if s['kind'] == 'METHOD']
+-            if local:
+-                return local, path
+-        for base in self._get_bases(cls):
+-            found, tail = self._find_method(base, name, seen, include_self=True)
++        order, reason = self._mro(cls)
++        if reason != 'complete':
++            # A direct ordinary method can still be a grounded may-call on an
++            # unknown base, but invalid/customized classes are not assumed valid.
++            if reason == 'unknown_base' and include_self:
++                local, _ = self._local_method(cls, name)
++                return local, [cls['canonical_name'], reason]
++            return [], [cls['canonical_name'], reason]
++        return self._lookup_mro(order if include_self else order[1:], name)
++
++    def _resolve_super(self, call: dict, owner: dict | None, imports: dict) -> tuple[list[dict], str, list[str]]:
++        """Resolve super after its anchor in each source-backed receiver MRO.
++
++        Method bodies are context-insensitive: self may be an instance of a
++        known subclass, so cooperative sibling dispatch is a may-call union.
++        Read original source because legacy callee_text erases call arguments.
++        """
++        fn = self.by_id.get(call.get('caller_id'), {})
++        if not owner or fn.get('scope') != owner['qualified_name']:
++            return [], 'super_context_unknown', []
++        if ('super' in imports or 'super' in fn.get('parameters', []) or
++                self._lookup(call['module'] + '.super') or self._find_binding(call, 'super')):
++            return [], 'super_shadowed', []
++        if (self._lookup(call['module'] + '.' + call['scope'] + '.super') or
++                any('super' in a.get('targets', [])
++                    for a in self.assignments.get((call['file'], call['scope']), []))):
++            return [], 'super_shadowed', []
++        try:
++            expr = ast.parse(call.get('source') or '', mode='eval').body
++        except SyntaxError:
++            return [], 'super_syntax_unknown', []
++        if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute)
++                and isinstance(expr.func.value, ast.Call)):
++            return [], 'super_syntax_unknown', []
++        proxy = expr.func.value
++        if not isinstance(proxy.func, ast.Name) or proxy.func.id != 'super' or proxy.keywords:
++            return [], 'super_syntax_unknown', []
++        params = fn.get('parameters', [])
++        anchor = owner
++        if not params or 'staticmethod' in fn.get('decorators', []):
++            return [], 'super_receiver_unknown', []
++        receiver = params[0]
++        if self._find_binding(call, receiver):
++            return [], 'super_receiver_rebound', []
++        if proxy.args:
++            if len(proxy.args) != 2 or not isinstance(proxy.args[1], ast.Name) or proxy.args[1].id != receiver:
++                return [], 'super_receiver_unknown', []
++            refs = self._resolve_reference(ast.unparse(proxy.args[0]), call['module'], imports)
++            if len(refs) != 1 or refs[0]['kind'] != 'CLASS':
++                return [], 'super_anchor_unknown', []
++            anchor = refs[0]
++        targets, trace = [], []
++        for cls in self.classes.values():
++            order, status = self._mro(cls)
++            if status != 'complete' or owner['canonical_name'] not in order or anchor['canonical_name'] not in order:
++                continue
++            tail = order[order.index(anchor['canonical_name']) + 1:]
++            found, path = self._lookup_mro(tail, expr.func.attr)
++            targets.extend(found)
+             if found:
+-                return found, path + tail
+-        return [], path
++                trace.extend(['receiver:' + cls['canonical_name'], 'anchor:' + anchor['canonical_name'], *path])
++        return targets, 'super_c3_may_call' if targets else 'super_method_not_found', trace
+ 
+     def _resolve_reference(self, name: str, module: str, imports: dict[str, str]) -> list[dict]:
+         # Imported names must not fall back to accidental same-name definitions.
+@@ -234,13 +394,7 @@
+         imports = self.imports_at(call)
+         owner = self._owner_class(call)
+         if callee.startswith('super().'):
+-            if owner:
+-                meth = callee.split('super().', 1)[1]
+-                for base in self._get_bases(owner):
+-                    found, path = self._find_method(base, meth)
+-                    if found:
+-                        return found, 'super_parent_method', [owner['canonical_name'], *path]
+-            return [], 'super_method_not_found', []
++            return self._resolve_super(call, owner, imports)
+         if callee.startswith(('self.', 'cls.')):
+             if owner and callee.count('.') == 1:
+                 meth = callee.split('.', 1)[1]
+@@ -366,6 +520,10 @@
+             top_level = not call.get('caller_id')
+             caller_id = call.get('caller_id') or module_nodes[call['module']]
+             targets, reason, trace = self.resolve(call)
++            # A proven-invalid C3 hierarchy cannot be instantiated. Unknown
++            # external bases still permit a source-backed class candidate.
++            targets = [t for t in targets if not (
++                t['kind'] == 'CLASS' and self._mro(t)[1].startswith('invalid'))]
+             if top_level:
+                 # A module initializer runs in source order: definitions below
+                 # the call are not yet bound in that module. A full execution
+@@ -395,6 +553,8 @@
+             evidence = {"call_id": call['id'], "file": call['file'], "line": call['line'],
+                         "column": call.get('column'), "source": call.get('source'),
+                         "rule": reason, "trace": trace, "module_level": top_level}
++            if reason == 'super_c3_may_call':
++                evidence['certainty'] = 'receiver_hierarchy_may_call'
+             if top_level:
+                 evidence['certainty'] = 'module_initialization_may_execute'
+             if len(targets) > 1 and 'certainty' not in evidence:
+--- v24/symbol_builder.py
++++ v25/symbol_builder.py
+@@ -105,6 +105,7 @@
+                 'qualified_name': qname, 'canonical_name': canonical,
+                 'module': module, 'file': file_path, 'scope': cls.get('scope'),
+                 'bases': cls.get('bases', []), 'decorators': cls.get('decorators', []),
++                'class_keywords': cls.get('class_keywords', []),
+                 **location(cls),
+             })
+             local_index[(file_path, qname)] = symbol_id
+@@ -279,4 +280,4 @@
+ 
+ 
+ if __name__ == "__main__":
+-    main()+    main()

@@ -1,0 +1,823 @@
+--- c3/graph_builder.py
++++ object_flow/graph_builder.py
+@@ -487,6 +487,12 @@
+         return [], 'unsupported_dynamic_syntax', []
+ 
+     def build(self) -> dict:
++        from object_flow import ObjectFlow
++        object_flow = ObjectFlow(self, fields=True, dispatch=True)
++        object_results = object_flow.run()
++        self.return_summaries = object_flow.summaries
++        self.object_flow_stats = {'expression_steps': object_flow.steps, 'recursion_or_budget_cutoffs': object_flow.cutoffs,
++                                  'summarized_functions': len(object_flow.summaries), 'managed_calls': len(object_results)}
+         nodes = [{"id": s['id'], "kind": s['kind'], "name": s['name'],
+                   "canonical_name": s['canonical_name'], "file": s['file'],
+                   "line": s.get('line')} for s in self.symbols]
+@@ -519,7 +525,14 @@
+         for call in self.calls:
+             top_level = not call.get('caller_id')
+             caller_id = call.get('caller_id') or module_nodes[call['module']]
+-            targets, reason, trace = self.resolve(call)
++            targets, reason, trace = object_results.get(call['id'], (None, None, None))
++            if targets is None:
++                targets, reason, trace = self.resolve(call)
++            elif targets:
++                legacy_targets, legacy_reason, legacy_trace = self.resolve(call)
++                if {t['id'] for t in targets} == {t['id'] for t in legacy_targets}:
++                    # Preserve established flow provenance for unchanged edges.
++                    targets, reason, trace = legacy_targets, legacy_reason, legacy_trace
+             # A proven-invalid C3 hierarchy cannot be instantiated. Unknown
+             # external bases still permit a source-backed class candidate.
+             targets = [t for t in targets if not (
+@@ -555,6 +568,8 @@
+                         "rule": reason, "trace": trace, "module_level": top_level}
+             if reason == 'super_c3_may_call':
+                 evidence['certainty'] = 'receiver_hierarchy_may_call'
++            if reason == 'object_flow_may_call':
++                evidence['certainty'] = 'interprocedural_may_call'
+             if top_level:
+                 evidence['certainty'] = 'module_initialization_may_execute'
+             if len(targets) > 1 and 'certainty' not in evidence:
+--- c3/call_status.py
++++ object_flow/call_status.py
+@@ -284,7 +284,7 @@
+                 partial = (cid in conditional or cid in ambiguous or
+                            any('partial_type_candidates' in (e.get('evidence', {}).get('rule') or '') or
+                                e.get('evidence', {}).get('may_be_unbound') or
+-                               e.get('evidence', {}).get('certainty') in ('declared_parameter_type_may_call', 'receiver_hierarchy_may_call')
++                               e.get('evidence', {}).get('certainty') in ('declared_parameter_type_may_call', 'receiver_hierarchy_may_call', 'interprocedural_may_call')
+                                for e in edges))
+                 row.update(status='RESOLVED_INTERNAL', origin_kind='INTERNAL',
+                            certainty='MAY_CALL' if partial else 'SOURCE_BACKED',
+--- c3/symbol_builder.py
++++ object_flow/symbol_builder.py
+@@ -249,6 +249,7 @@
+ 
+     return {
+         "repository": repository,
++        "analysis_sources": {normalize_path(f['file']): f['source'] for f in ast_result.get('files', []) if 'source' in f},
+         "symbol_count": len(symbols),
+         "source_modules": sorted({module_name_from_file(normalize_path(f.get("file", "")), repository) for f in ast_result.get("files", [])}),
+         "overload_declarations": overload_declarations,
+--- c3/ast_parser.py
++++ object_flow/ast_parser.py
+@@ -243,7 +243,7 @@
+                 snap = flow.get((call.get('line'), call.get('column')))
+                 if snap is not None:
+                     call['flow'] = snap
+-            files.append({"file": relative, "classes": visitor.classes, "functions": visitor.functions,
++            files.append({"file": relative, "source": source, "classes": visitor.classes, "functions": visitor.functions,
+                           "imports": visitor.imports, "calls": visitor.calls, "assignments": visitor.assignments,
+                           "binding_hazards": visitor.binding_hazards})
+         except (SyntaxError, UnicodeError, OSError) as exc:
+--- /dev/null
++++ object_flow/object_flow.py
+@@ -0,0 +1,451 @@
++"""Bounded, context-sensitive abstract execution for internal object flow.
++
++No target code is executed. Values are finite sets of references/allocation
++sites plus explicit unknown/None alternatives. Recursive cutoffs yield top,
++never a guessed class. The legacy graph resolver remains the fallback for
++syntax outside this interpreter's supported subset.
++"""
++from __future__ import annotations
++
++import ast
++from dataclasses import dataclass, replace
++
++
++@dataclass(frozen=True)
++class Atom:
++    kind: str
++    name: str = ''
++    site: str = ''
++
++
++@dataclass(frozen=True)
++class Value:
++    atoms: frozenset[Atom] = frozenset()
++    tags: frozenset[str] = frozenset()
++
++    def join(self, other):
++        atoms = self.atoms | other.atoms
++        return Value(atoms if len(atoms) <= 32 else frozenset({Atom('unknown')}), self.tags | other.tags)
++
++    def tagged(self, tag):
++        return replace(self, tags=self.tags | {tag})
++
++
++UNKNOWN = Value(frozenset({Atom('unknown')}))
++NONE = Value(frozenset({Atom('none')}))
++BOTTOM = Value()
++
++
++def one(kind, name='', site=''):
++    return Value(frozenset({Atom(kind, name, site)}))
++
++
++def merge_maps(a, b):
++    return {k: a.get(k, UNKNOWN).join(b.get(k, UNKNOWN)) for k in a.keys() | b.keys()}
++
++
++class ObjectFlow:
++    def __init__(self, resolver, *, fields=False, dispatch=False):
++        self.r = resolver
++        self.fields = fields
++        self.dispatch = dispatch
++        self.functions = {}
++        self.modules = {}
++        self.events = {}
++        self.summaries = {}
++        self.stack = []
++        self.return_heaps = []
++        self.steps = 0
++        self.cutoffs = 0
++        self.specific = set()
++        self.call_index = {(c['file'], c['line'], c['column'], c.get('end_line'), c.get('end_column')): c for c in resolver.calls}
++        for file, source in resolver.data.get('analysis_sources', {}).items():
++            tree = ast.parse(source)
++            self.modules[file] = tree
++            index = {n.lineno: n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
++            for symbol in resolver.symbols:
++                if symbol['file'] == file and symbol['kind'] in ('FUNCTION', 'METHOD') and symbol['line'] in index:
++                    self.functions[symbol['id']] = index[symbol['line']]
++
++    def refs(self, name, context, node):
++        call = {**context, 'line': getattr(node, 'lineno', context.get('line', 0))}
++        imports = self.r.imports_at(call)
++        refs = self.r._resolve_reference(name, context['module'], imports)
++        if not refs and '.' not in name:
++            parts = context.get('scope', '').split('.')
++            while parts and not refs:
++                refs = self.r._lookup('.'.join([context['module'], *parts, name]))
++                parts.pop()
++        return refs
++
++    def hint(self, node, context):
++        if isinstance(node, ast.Constant) and isinstance(node.value, str):
++            try:
++                node = ast.parse(node.value, mode='eval').body
++            except SyntaxError:
++                return UNKNOWN
++        if not isinstance(node, (ast.Name, ast.Attribute)):
++            return UNKNOWN
++        refs = self.refs(ast.unparse(node), context, node)
++        if len(refs) == 1 and refs[0]['kind'] == 'CLASS':
++            return one('object', refs[0]['canonical_name'], 'hint:' + refs[0]['id']).join(UNKNOWN).tagged('annotation')
++        return UNKNOWN
++
++    def note(self, node, context, mode, targets, managed, tags=()):
++        call = self.call_index.get((context['file'], node.lineno, node.col_offset, node.end_lineno, node.end_col_offset))
++        if call is None:
++            return
++        key = (call['id'], mode)
++        item = self.events.setdefault(key, {'targets': set(), 'managed': False, 'trace': set(), 'owner': call.get('caller_id')})
++        item['targets'].update(s['id'] for s in targets)
++        item['managed'] |= managed
++        item['trace'].update(tags)
++        item['trace'].add('context:' + ' > '.join(self.stack[-4:]))
++
++    def invoke(self, symbol, args, kwargs, heap, mode, site):
++        fn = self.functions.get(symbol['id'])
++        if fn is None or symbol.get('decorators') and any(d not in ('classmethod', 'staticmethod') for d in symbol['decorators']):
++            return UNKNOWN.tagged('return')
++        if isinstance(fn, ast.AsyncFunctionDef) or self.is_generator(fn):
++            return UNKNOWN.tagged('return')
++        if symbol['id'] in self.stack or len(self.stack) >= 16 or self.steps > 50000:
++            self.cutoffs += 1
++            return UNKNOWN.tagged('return')
++        if mode == 'specific':
++            self.specific.add(symbol['id'])
++        context = {**symbol, 'scope': symbol['qualified_name'], 'caller_id': symbol['id']}
++        params = [*fn.args.posonlyargs, *fn.args.args]
++        if mode == 'specific':
++            required = len(params) - len(fn.args.defaults)
++            known = {p.arg for p in [*params, *fn.args.kwonlyargs]}
++            invalid = (len(args) > len(params) and fn.args.vararg is None)
++            invalid |= any(p.arg in kwargs for p in params[:len(args)])
++            invalid |= any(p.arg in kwargs for p in fn.args.posonlyargs)
++            invalid |= any(i >= len(args) and p.arg not in kwargs for i, p in enumerate(params[:required]))
++            invalid |= any(p.arg not in kwargs and default is None for p, default in zip(fn.args.kwonlyargs, fn.args.kw_defaults))
++            invalid |= any(k not in known for k in kwargs) and fn.args.kwarg is None
++            if invalid:
++                return UNKNOWN.tagged('return')
++        env = {}
++        for i, param in enumerate(params):
++            value = args[i] if i < len(args) else kwargs.get(param.arg, self.hint(param.annotation, context))
++            env[param.arg] = value.tagged('context') if mode == 'specific' else value
++        for param in fn.args.kwonlyargs:
++            env[param.arg] = kwargs.get(param.arg, self.hint(param.annotation, context))
++        # Python determines locals lexically, even before their first store.
++        for n in self.own_nodes(fn):
++            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
++                env.setdefault(n.id, UNKNOWN)
++        self.stack.append(symbol['id'])
++        self.return_heaps.append([])
++        _, result, live = self.block(fn.body, env, heap, context, mode, site)
++        returned_heaps = self.return_heaps.pop()
++        self.stack.pop()
++        if live:
++            result = result.join(NONE)
++            returned_heaps.append(dict(heap))
++        if returned_heaps:
++            merged_heap = returned_heaps[0]
++            for branch_heap in returned_heaps[1:]:
++                merged_heap = merge_maps(merged_heap, branch_heap)
++            heap.clear(); heap.update(merged_heap)
++        stub = all(isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
++                   and (n.value.value is Ellipsis or isinstance(n.value.value, str)) for n in fn.body)
++        # Concrete bodies outrank advisory hints; hints only supplement top or
++        # ellipsis stubs, never contradict a known return value or implicit None.
++        if stub or any(a.kind == 'unknown' for a in result.atoms):
++            result = (UNKNOWN if stub else result).join(self.hint(fn.returns, context))
++        result = result.tagged('return:' + symbol['canonical_name']).tagged('return')
++        self.summaries[symbol['id']] = self.summaries.get(symbol['id'], BOTTOM).join(result)
++        return result
++
++    @staticmethod
++    def own_nodes(fn):
++        pending = list(fn.body)
++        while pending:
++            node = pending.pop()
++            yield node
++            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
++                pending.extend(ast.iter_child_nodes(node))
++
++    def is_generator(self, fn):
++        return any(isinstance(n, (ast.Yield, ast.YieldFrom)) for n in self.own_nodes(fn))
++
++    def expr(self, node, env, heap, context, mode, site):
++        if node is None:
++            return NONE
++        self.steps += 1
++        if self.steps > 50000:
++            return UNKNOWN
++        if isinstance(node, ast.Name):
++            if node.id in env:
++                return env[node.id]
++            refs = self.refs(node.id, context, node)
++            return Value(frozenset(Atom('reference', s['id']) for s in refs)) if refs else UNKNOWN
++        if isinstance(node, ast.Constant):
++            return NONE if node.value is None else one('literal', repr(node.value))
++        if isinstance(node, ast.IfExp):
++            self.expr(node.test, env, heap, context, mode, site)
++            left, right = dict(heap), dict(heap)
++            a = self.expr(node.body, dict(env), left, context, mode, site)
++            b = self.expr(node.orelse, dict(env), right, context, mode, site)
++            heap.clear(); heap.update(merge_maps(left, right))
++            return a.join(b)
++        if isinstance(node, ast.Attribute):
++            receiver = self.expr(node.value, env, heap, context, mode, site)
++            result = BOTTOM
++            for atom in receiver.atoms:
++                if atom.kind == 'object' and self.fields:
++                    result = result.join(heap.get((atom.site, node.attr), UNKNOWN).tagged('field').tagged('field:' + node.attr))
++                else:
++                    result = result.join(UNKNOWN)
++            # Module/class qualified references are resolved only if the root
++            # is not an actual local receiver (no name-based fallback).
++            root = node
++            while isinstance(root, ast.Attribute):
++                root = root.value
++            if isinstance(root, ast.Name) and root.id not in env:
++                refs = self.refs(ast.unparse(node), context, node)
++                if refs:
++                    return Value(frozenset(Atom('reference', s['id']) for s in refs))
++            tracked = any(a.kind == 'object' for a in receiver.atoms) or bool(receiver.tags & {'return', 'field'})
++            return result.tagged('field') if self.fields and tracked else UNKNOWN
++        if isinstance(node, ast.Call):
++            return self.call(node, env, heap, context, mode, site)
++        for child in ast.iter_child_nodes(node):
++            if isinstance(child, ast.expr):
++                self.expr(child, env, heap, context, mode, site)
++        return UNKNOWN
++
++    def call(self, node, env, heap, context, mode, site):
++        receiver = None
++        targets = []
++        bindings = []
++        managed = False
++        tags = set()
++        if isinstance(node.func, ast.Attribute):
++            if (isinstance(node.func.value, ast.Call) and isinstance(node.func.value.func, ast.Name)
++                    and node.func.value.func.id == 'super'):
++                proxy = node.func.value
++                owner = self.r._owner_class(context)
++                symbol = self.r.by_id.get(context.get('caller_id'), {})
++                params = symbol.get('parameters', [])
++                call = self.call_index.get((context['file'], node.lineno, node.col_offset, node.end_lineno, node.end_col_offset))
++                allowed = False
++                if call:
++                    _, why, _ = self.r._resolve_super(call, owner, self.r.imports_at(call))
++                    allowed = why in ('super_c3_may_call', 'super_method_not_found')
++                receiver = env.get(params[0], UNKNOWN) if params else UNKNOWN
++                anchor = owner
++                if len(proxy.args) == 2:
++                    refs = self.refs(ast.unparse(proxy.args[0]), context, node)
++                    anchor = refs[0] if len(refs) == 1 and refs[0]['kind'] == 'CLASS' else None
++                if allowed and anchor:
++                    for atom in receiver.atoms:
++                        if atom.kind != 'object':
++                            continue
++                        order, status = self.r._mro(self.r.classes[atom.name])
++                        if status == 'complete' and anchor['canonical_name'] in order:
++                            found, path = self.r._lookup_mro(order[order.index(anchor['canonical_name']) + 1:], node.func.attr)
++                            for fn in found:
++                                targets.append(fn); bindings.append((fn, one('object', atom.name, atom.site)))
++                            tags.update(path)
++                managed = self.dispatch and mode == 'specific'
++                tags.update(receiver.tags)
++                tags.add('super_receiver_context')
++            else:
++                receiver = self.expr(node.func.value, env, heap, context, mode, site)
++                tags.update(receiver.tags)
++                managed = bool(receiver.tags & {'return', 'field'}) or isinstance(node.func.value, ast.Call)
++                if self.dispatch and mode == 'specific' and 'context' in receiver.tags:
++                    managed = True
++                for atom in receiver.atoms:
++                    if atom.kind == 'object':
++                        cls = self.r.classes.get(atom.name)
++                        # Instance attributes shadow non-data method descriptors.
++                        if self.fields and (atom.site, node.func.attr) in heap:
++                            managed = True
++                            tags.add('field_shadow')
++                            continue
++                        found, _ = self.r._find_method(cls, node.func.attr) if cls else ([], [])
++                        for fn in found:
++                            targets.append(fn)
++                            bindings.append((fn, one('object', atom.name, atom.site)))
++                if not targets and not managed:
++                    refs = self.refs(ast.unparse(node.func), context, node)
++                    for ref in refs:
++                        targets.append(ref); bindings.append((ref, None))
++        else:
++            function = self.expr(node.func, env, heap, context, mode, site)
++            tags.update(function.tags)
++            for atom in function.atoms:
++                if atom.kind == 'reference' and atom.name in self.r.by_id:
++                    fn = self.r.by_id[atom.name]
++                    targets.append(fn); bindings.append((fn, None))
++        args = [self.expr(a, env, heap, context, mode, site) for a in node.args]
++        kwargs = {k.arg: self.expr(k.value, env, heap, context, mode, site) for k in node.keywords}
++        if receiver:
++            for atom in receiver.atoms:
++                if atom.kind == 'object':
++                    tags.update(('receiver:' + atom.name, 'allocation:' + atom.site))
++                else:
++                    tags.add('receiver_alternative:' + atom.kind)
++        self.note(node, context, mode, targets, managed, tags)
++        callsite = f"{context['file']}:{node.lineno}:{node.col_offset}"
++        child_site = callsite + ' > ' + site
++        child_mode = 'generic' if mode == 'generic' else 'specific'
++        if any(isinstance(arg, ast.Starred) for arg in node.args) or None in kwargs:
++            return UNKNOWN.tagged('return')
++        result = BOTTOM
++        start_heap = dict(heap)
++        outcomes = []
++        for fn, bound in bindings:
++            branch_heap = dict(start_heap)
++            if fn['kind'] == 'CLASS':
++                custom_new, _ = self.r._find_method(fn, '__new__')
++                if self.r._mro(fn)[1].startswith('invalid') or custom_new:
++                    value = UNKNOWN.tagged('return')
++                else:
++                    allocation = child_site
++                    value = one('object', fn['canonical_name'], allocation)
++                    if self.fields:
++                        initializers, _ = self.r._find_method(fn, '__init__')
++                        for init in initializers:
++                            self.invoke(init, [value, *args], kwargs, branch_heap, child_mode, child_site)
++            else:
++                actual = args
++                if bound is not None and 'staticmethod' not in fn.get('decorators', []):
++                    actual = [bound, *args]
++                value = self.invoke(fn, actual, kwargs, branch_heap, child_mode, child_site)
++            result = result.join(value)
++            outcomes.append(branch_heap)
++        if outcomes:
++            merged = outcomes[0]
++            for branch in outcomes[1:]:
++                merged = merge_maps(merged, branch)
++            heap.clear(); heap.update(merged)
++        else:
++            result = UNKNOWN.tagged('return')
++            if self.fields:
++                # Unknown callees may mutate escaping objects. Invalidate
++                # reachable fields instead of keeping stale strong updates.
++                escaped = {a.site for v in [*args, *kwargs.values(), receiver or BOTTOM]
++                           for a in v.atoms if a.kind == 'object'}
++                while True:
++                    more = {a.site for (obj, _), v in heap.items() if obj in escaped
++                            for a in v.atoms if a.kind == 'object'} - escaped
++                    if not more:
++                        break
++                    escaped.update(more)
++                for key in heap:
++                    if key[0] in escaped:
++                        heap[key] = UNKNOWN.tagged('field')
++        return result
++
++    def assign(self, target, value, env, heap, context, mode, site):
++        if isinstance(target, ast.Name):
++            env[target.id] = value
++        elif isinstance(target, ast.Attribute) and self.fields:
++            receiver = self.expr(target.value, env, heap, context, mode, site)
++            objects = [a for a in receiver.atoms if a.kind == 'object']
++            strong = len(receiver.atoms) == 1 and len(objects) == 1 and not objects[0].site.startswith('hint:')
++            for obj in objects:
++                key = (obj.site, target.attr)
++                heap[key] = value if strong else heap.get(key, UNKNOWN).join(value)
++        elif isinstance(target, (ast.Tuple, ast.List)):
++            for part in target.elts:
++                self.assign(part, UNKNOWN, env, heap, context, mode, site)
++
++    def block(self, body, env, heap, context, mode, site):
++        returns = BOTTOM
++        for stmt in body:
++            if self.steps > 50000:
++                return env, returns.join(UNKNOWN), True
++            if isinstance(stmt, ast.Return):
++                value = self.expr(stmt.value, env, heap, context, mode, site)
++                if self.return_heaps:
++                    self.return_heaps[-1].append(dict(heap))
++                return env, returns.join(value), False
++            if isinstance(stmt, ast.Raise):
++                return env, returns, False
++            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
++                continue
++            if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
++                continue
++            if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
++                value = self.expr(stmt.value, env, heap, context, mode, site)
++                for target in stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]:
++                    self.assign(target, value, env, heap, context, mode, site)
++            elif isinstance(stmt, ast.Expr):
++                self.expr(stmt.value, env, heap, context, mode, site)
++            elif isinstance(stmt, ast.If):
++                self.expr(stmt.test, env, heap, context, mode, site)
++                branches = [stmt.body, stmt.orelse]
++                if isinstance(stmt.test, ast.Constant):
++                    branches = [stmt.body if stmt.test.value else stmt.orelse]
++                live_envs, live_heaps, all_heaps = [], [], []
++                for branch in branches:
++                    branch_heap = dict(heap)
++                    branch_env, ret, live = self.block(branch, dict(env), branch_heap, context, mode, site)
++                    returns = returns.join(ret)
++                    all_heaps.append(branch_heap)
++                    if live:
++                        live_envs.append(branch_env); live_heaps.append(branch_heap)
++                if not live_envs:
++                    merged_heap = all_heaps[0]
++                    for branch_heap in all_heaps[1:]:
++                        merged_heap = merge_maps(merged_heap, branch_heap)
++                    heap.clear(); heap.update(merged_heap)
++                    return env, returns, False
++                env = live_envs[0]
++                merged_heap = live_heaps[0]
++                for branch_env, branch_heap in zip(live_envs[1:], live_heaps[1:]):
++                    env = merge_maps(env, branch_env); merged_heap = merge_maps(merged_heap, branch_heap)
++                heap.clear(); heap.update(merged_heap)
++            else:
++                # Unsupported compound statements: retain uncertainty, never
++                # treat a syntactic return inside them as unconditional.
++                for n in ast.walk(stmt):
++                    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
++                        env[n.id] = UNKNOWN
++                    if isinstance(n, ast.Attribute) and isinstance(n.ctx, (ast.Store, ast.Del)):
++                        for key in heap:
++                            if key[1] == n.attr:
++                                heap[key] = UNKNOWN.tagged('field')
++                returns = returns.join(UNKNOWN)
++        return env, returns, True
++
++    def run(self):
++        if self.fields:
++            # Library methods are analyzed in a hypothetical owner-instance
++            # context. Observed call contexts below take precedence over this
++            # fallback; no subclass is invented merely from class membership.
++            for symbol in self.r.symbols:
++                if symbol['kind'] != 'METHOD' or symbol['name'] == '__init__':
++                    continue
++                cls = self.r.classes.get(symbol['module'] + '.' + symbol['scope'])
++                if not cls or symbol.get('decorators'):
++                    continue
++                obj = one('object', cls['canonical_name'], 'root:' + symbol['id'])
++                heap = {}
++                inits, _ = self.r._find_method(cls, '__init__')
++                for init in inits:
++                    self.invoke(init, [obj], {}, heap, 'generic', 'root:' + symbol['id'])
++                self.invoke(symbol, [obj], {}, heap, 'generic', 'root:' + symbol['id'])
++        for symbol in self.r.symbols:
++            if symbol['kind'] == 'FUNCTION' and symbol['id'] in self.functions:
++                self.invoke(symbol, [], {}, {}, 'root', 'root:' + symbol['id'])
++        # Module-level statements are real entry points too.
++        for file, tree in self.modules.items():
++            module = next((s['module'] for s in self.r.symbols if s['file'] == file), '')
++            self.block(tree.body, {}, {}, {'file': file, 'module': module, 'scope': '<module>'}, 'root', 'module:' + file)
++        result = {}
++        for call in self.r.calls:
++            owner = call.get('caller_id')
++            modes = ['specific'] if owner in self.specific else ['root', 'generic']
++            chosen = [self.events[(call['id'], mode)] for mode in modes if (call['id'], mode) in self.events]
++            if any(e['managed'] for e in chosen):
++                ids = set().union(*(e['targets'] for e in chosen))
++                trace = sorted(set().union(*(e['trace'] for e in chosen)))
++                result[call['id']] = ([self.r.by_id[i] for i in sorted(ids)], 'object_flow_may_call', trace)
++        return result
+--- /dev/null
++++ object_flow/tests/test_field_flow.py
+@@ -0,0 +1,82 @@
++import unittest
++import test_object_flow as helpers
++CLASSES = helpers.CLASSES
++
++
++class FieldTests(unittest.TestCase):
++    graph = helpers.ReturnTests.graph
++    targets = helpers.ReturnTests.targets
++    def test_direct_field(self):
++        targets, _ = self.targets(CLASSES + 'class C:\n    def __init__(self): self.worker=A()\n    def go(self): self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_factory_field(self):
++        targets, _ = self.targets(CLASSES + 'def make(): return A()\nclass C:\n    def __init__(self): self.worker=make()\n    def go(self): self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_field_reassignment(self):
++        targets, _ = self.targets(CLASSES + 'class C:\n    def go(self):\n        self.worker=A()\n        self.worker=B()\n        self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.B.run'})
++
++    def test_field_unknown_kills_type(self):
++        targets, _ = self.targets(CLASSES + 'class C:\n    def go(self):\n        self.worker=A()\n        self.worker=unknown()\n        self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, set())
++
++    def test_inherited_field(self):
++        targets, _ = self.targets(CLASSES + 'class Base:\n    def __init__(self): self.worker=A()\nclass Child(Base):\n    def go(self): self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_separate_instances(self):
++        targets, _ = self.targets(CLASSES + 'class C: pass\ndef go():\n    x=C(); y=C()\n    x.worker=A(); y.worker=B()\n    x.worker.run()\n', 'x.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_alias_updates_same_instance(self):
++        targets, _ = self.targets(CLASSES + 'class C: pass\ndef go():\n    x=C(); y=x\n    x.worker=A(); y.worker=B()\n    x.worker.run()\n', 'x.worker.run')
++        self.assertEqual(targets, {'METHOD:app.B.run'})
++
++    def test_wrapped_factory_allocations_do_not_alias(self):
++        source = CLASSES + '''class C: pass
++def make():
++    obj=C(); obj.worker=A(); return obj
++def wrap(): return make()
++def go():
++    x=wrap(); y=wrap()
++    y.worker=B()
++    x.worker.run()
++'''
++        targets, _ = self.targets(source, 'x.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_returned_object_fields(self):
++        targets, _ = self.targets(CLASSES + 'class C: pass\ndef make():\n    c=C(); c.worker=A(); return c\ndef go():\n    x=make(); x.worker.run()\n', 'x.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run'})
++
++    def test_unknown_escape_invalidates_fields(self):
++        targets, _ = self.targets(CLASSES + 'class C: pass\ndef go():\n    x=C(); x.worker=A(); external(x); x.worker.run()\n', 'x.worker.run')
++        self.assertEqual(targets, set())
++
++    def test_branch_field_join(self):
++        targets, _ = self.targets(CLASSES + 'class C:\n    def go(self, flag):\n        if flag: self.worker=A()\n        else: self.worker=B()\n        self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run', 'METHOD:app.B.run'})
++
++    def test_cross_method_mutation(self):
++        targets, _ = self.targets(CLASSES + 'class C:\n    def set(self): self.worker=B()\n    def go(self):\n        self.worker=A(); self.set(); self.worker.run()\n', 'self.worker.run')
++        self.assertEqual(targets, {'METHOD:app.B.run'})
++
++    def test_return_path_heap_effects_are_joined(self):
++        source = CLASSES + '''class C: pass
++def make(flag):
++    obj=C()
++    if flag:
++        obj.worker=A()
++        return obj
++    obj.worker=B()
++    return obj
++def go(flag):
++    obj=make(flag)
++    obj.worker.run()
++'''
++        targets, _ = self.targets(source, 'obj.worker.run')
++        self.assertEqual(targets, {'METHOD:app.A.run', 'METHOD:app.B.run'})
++
++
+--- /dev/null
++++ object_flow/tests/test_object_flow.py
+@@ -0,0 +1,106 @@
++import tempfile
++import unittest
++from pathlib import Path
++from ast_parser import scan_repository
++from symbol_builder import build_symbol_result
++from graph_builder import build_graph
++from unresolved_classifier import reclassify_graph
++from call_status import annotate_call_statuses
++
++
++CLASSES = 'class A:\n    def run(self): pass\nclass B:\n    def run(self): pass\n'
++
++
++class ReturnTests(unittest.TestCase):
++    def graph(self, source, extra=None):
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp) / 'repo'
++            root.mkdir()
++            for name, text in {'app.py': source, **(extra or {})}.items():
++                (root / name).write_text(text, encoding='utf-8')
++            data = build_symbol_result(scan_repository(root))
++            return annotate_call_statuses(reclassify_graph(build_graph(data), data), data)
++
++    def targets(self, source, callee='obj.run', extra=None):
++        g = self.graph(source, extra)
++        rows = [r for r in g['call_statuses'] if r['callee_text'] == callee]
++        self.assertEqual(len(rows), 1, rows)
++        return set(rows[0]['target_ids']), rows[0]
++
++    def check(self, factory, expected, call='obj=factory(); obj.run()', callee='obj.run'):
++        targets, row = self.targets(CLASSES + factory + '\ndef go(flag):\n    ' + call + '\n', callee)
++        self.assertEqual(targets, {'METHOD:app.' + name + '.run' for name in expected})
++        if expected:
++            self.assertEqual(row['certainty'], 'MAY_CALL')
++
++    def test_return_constructor(self):
++        self.check('def factory(): return A()\n', ['A'])
++
++    def test_annotation_stub(self):
++        self.check('def factory() -> A: ...\n', ['A'])
++
++    def test_contradictory_annotation(self):
++        self.check('def factory() -> A: return B()\n', ['B'])
++
++    def test_annotation_does_not_override_none(self):
++        self.check('def factory() -> A: return None\n', [])
++
++    def test_annotation_does_not_override_implicit_none(self):
++        self.check('def factory() -> A: pass\n', [])
++
++    def test_custom_new_not_assumed_requested_class(self):
++        self.check('class C:\n    def __new__(cls): return B()\n    def run(self): pass\ndef factory(): return C()\n', [])
++
++    def test_branch_returns(self):
++        self.check('def factory(flag):\n    if flag: return A()\n    else: return B()\n', ['A', 'B'], 'obj=factory(flag); obj.run()')
++
++    def test_chained_return(self):
++        self.check('def inner(): return A()\ndef factory(): return inner()\n', ['A'])
++
++    def test_chained_call(self):
++        self.check('def factory(): return A()\n', ['A'], 'factory().run()', 'factory().run')
++
++    def test_none_path(self):
++        self.check('def factory(flag):\n    if flag: return A()\n', ['A'], 'obj=factory(flag); obj.run()')
++
++    def test_unknown_path(self):
++        self.check('def factory(flag):\n    if flag: return A()\n    return unknown()\n', ['A'], 'obj=factory(flag); obj.run()')
++
++    def test_reassignment(self):
++        self.check('def factory(): return A()\n', [], 'obj=factory(); obj=None; obj.run()')
++
++    def test_recursive_cutoff(self):
++        self.check('def factory(): return factory()\n', [])
++
++    def test_recursive_base_case(self):
++        self.check('def factory(flag):\n    if flag: return A()\n    return factory(flag)\n', ['A'], 'obj=factory(flag); obj.run()')
++
++    def test_mutual_recursion(self):
++        self.check('def factory(): return inner()\ndef inner(): return factory()\n', [])
++
++    def test_async_not_returned_instance(self):
++        self.check('async def factory() -> A: return A()\n', [])
++
++    def test_generator_not_returned_instance(self):
++        self.check('def factory() -> A:\n    yield 1\n    return A()\n', [])
++
++    def test_cross_file_reexport(self):
++        extra = {'models.py': CLASSES + 'def create(): return A()\n', 'api.py': 'from models import create as factory\n'}
++        targets, _ = self.targets('from api import factory as make\ndef go():\n    obj=make(); obj.run()\n', extra=extra)
++        self.assertEqual(targets, {'METHOD:models.A.run'})
++
++    def test_shadowed_factory(self):
++        self.check('def factory(): return A()\n', [], 'factory=unknown; obj=factory(); obj.run()')
++
++    def test_missing_required_argument(self):
++        self.check('def factory(required): return A()\n', [])
++
++    def test_bad_keyword_argument(self):
++        self.check('def factory(): return A()\n', [], 'obj=factory(bad=1); obj.run()')
++
++    def test_star_arguments_remain_unknown(self):
++        self.check('def factory(): return A()\n', [], 'obj=factory(*unknown); obj.run()')
++
++
++if __name__ == '__main__':
++    unittest.main()
+--- /dev/null
++++ object_flow/tests/test_context_dispatch.py
+@@ -0,0 +1,100 @@
++import unittest
++import test_object_flow as helpers
++
++
++BASE = '''class Base:
++    def run(self): pass
++    def execute(self): self.run()
++class Left(Base):
++    def run(self): pass
++class Right(Base):
++    def run(self): pass
++'''
++
++
++class DispatchTests(unittest.TestCase):
++    graph = helpers.ReturnTests.graph
++    targets = helpers.ReturnTests.targets
++
++    def test_inherited_body_actual_child(self):
++        ts, _ = self.targets(BASE + '\ndef go():\n    x=Left(); x.execute()\n', 'self.run')
++        self.assertEqual(ts, {'METHOD:app.Left.run'})
++
++    def test_unused_subclass_not_added(self):
++        ts, _ = self.targets(BASE + '\ndef go():\n    x=Base(); x.execute()\n', 'self.run')
++        self.assertEqual(ts, {'METHOD:app.Base.run'})
++
++    def test_multiple_observed_receivers(self):
++        ts, row = self.targets(BASE + '\ndef go():\n    x=Left(); x.execute()\n    y=Right(); y.execute()\n', 'self.run')
++        self.assertEqual(ts, {'METHOD:app.Left.run', 'METHOD:app.Right.run'})
++        self.assertEqual(row['certainty'], 'MAY_CALL')
++
++    def test_factory_receiver(self):
++        ts, _ = self.targets(BASE + '\ndef make(): return Left()\ndef go():\n    x=make(); x.execute()\n', 'self.run')
++        self.assertEqual(ts, {'METHOD:app.Left.run'})
++
++    def test_receiver_through_parameter(self):
++        ts, _ = self.targets(BASE + '\ndef invoke(x): x.execute()\ndef go(): invoke(Left())\n', 'self.run')
++        self.assertEqual(ts, {'METHOD:app.Left.run'})
++
++    def test_context_sensitive_return(self):
++        ts, _ = self.targets(BASE + '\ndef identity(x): return x\ndef go():\n    x=identity(Left()); y=identity(Right()); x.run()\n', 'x.run')
++        self.assertEqual(ts, {'METHOD:app.Left.run'})
++
++    def test_actual_super_sibling(self):
++        source = '''class A:
++    def run(self): pass
++class B(A):
++    def run(self): super().run()
++class C(A):
++    def run(self): pass
++class D(B,C): pass
++def go():
++    x=D(); x.run()
++'''
++        ts, _ = self.targets(source, 'super().run')
++        self.assertEqual(ts, {'METHOD:app.C.run'})
++
++    def test_super_does_not_add_unused_sibling(self):
++        source = '''class A:
++    def run(self): pass
++class B(A):
++    def run(self): super().run()
++class C(A):
++    def run(self): pass
++class D(B,C): pass
++def go():
++    x=B(); x.run()
++'''
++        ts, _ = self.targets(source, 'super().run')
++        self.assertEqual(ts, {'METHOD:app.A.run'})
++
++    def test_subclass_field_override_in_inherited_method(self):
++        source = helpers.CLASSES + '''class Parent:
++    def __init__(self): self.worker=A()
++    def execute(self): self.worker.run()
++class Child(Parent):
++    def __init__(self):
++        super().__init__()
++        self.worker=B()
++def go():
++    obj=Child(); obj.execute()
++'''
++        ts, _ = self.targets(source, 'self.worker.run')
++        self.assertEqual(ts, {'METHOD:app.B.run'})
++
++    def test_inherited_initialization_via_super(self):
++        source = helpers.CLASSES + '''class Parent:
++    def __init__(self): self.worker=A()
++class Child(Parent):
++    def __init__(self): super().__init__()
++    def execute(self): self.worker.run()
++def go():
++    obj=Child(); obj.execute()
++'''
++        ts, _ = self.targets(source, 'self.worker.run')
++        self.assertEqual(ts, {'METHOD:app.A.run'})
++
++    def test_instance_attribute_blocks_method(self):
++        ts, _ = self.targets(BASE + '\ndef go():\n    x=Left(); x.run=None; x.execute()\n', 'self.run')
++        self.assertEqual(ts, set())

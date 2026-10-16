@@ -1,0 +1,47 @@
+{
+  "original_unchanged_during_verification": true,
+  "changed_existing_files": [
+    "ast_parser.py",
+    "call_status.py",
+    "graph_builder.py",
+    "symbol_builder.py"
+  ],
+  "graph_schema_preserved": true,
+  "export_smoke_test": "JSON/CSV/HTML passed",
+  "call_graph_changes": [
+    {
+      "callee": "super().run",
+      "line": 7,
+      "before": [
+        "METHOD:app.A.run"
+      ],
+      "after": [
+        "METHOD:app.C.run"
+      ],
+      "before_status": "RESOLVED_INTERNAL",
+      "after_status": "RESOLVED_INTERNAL"
+    },
+    {
+      "callee": "obj.run",
+      "line": 11,
+      "before": [
+        "METHOD:app.A.run"
+      ],
+      "after": [
+        "METHOD:app.C.run"
+      ],
+      "before_status": "RESOLVED_INTERNAL",
+      "after_status": "RESOLVED_INTERNAL"
+    },
+    {
+      "callee": "other.run",
+      "line": 13,
+      "before": [
+        "METHOD:app.A.run"
+      ],
+      "after": [],
+      "before_status": "RESOLVED_INTERNAL",
+      "after_status": "UNKNOWN"
+    }
+  ]
+}

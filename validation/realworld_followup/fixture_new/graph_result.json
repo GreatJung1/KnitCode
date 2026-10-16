@@ -1,0 +1,135 @@
+{
+  "repository": "fixture_click",
+  "node_count": 4,
+  "edge_count": 1,
+  "total_call_sites": 1,
+  "resolved_call_sites": 1,
+  "unresolved_call_sites": 0,
+  "module_level_resolved_sites": 0,
+  "collection_indirect_resolved_sites": 0,
+  "nodes": [
+    {
+      "id": "FUNCTION:click.utils.echo",
+      "kind": "FUNCTION",
+      "name": "echo",
+      "canonical_name": "click.utils.echo",
+      "file": "fixture_click/src/click/utils.py",
+      "line": 1
+    },
+    {
+      "id": "FUNCTION:tests.test_example.demo",
+      "kind": "FUNCTION",
+      "name": "demo",
+      "canonical_name": "tests.test_example.demo",
+      "file": "fixture_click/tests/test_example.py",
+      "line": 3
+    },
+    {
+      "id": "MODULE:click.utils",
+      "kind": "MODULE",
+      "name": "utils",
+      "canonical_name": "click.utils",
+      "file": "fixture_click/src/click/utils.py",
+      "line": 1
+    },
+    {
+      "id": "MODULE:tests.test_example",
+      "kind": "MODULE",
+      "name": "test_example",
+      "canonical_name": "tests.test_example",
+      "file": "fixture_click/tests/test_example.py",
+      "line": 1
+    }
+  ],
+  "edges": [
+    {
+      "source": "FUNCTION:tests.test_example.demo",
+      "target": "FUNCTION:click.utils.echo",
+      "type": "CALLS",
+      "evidence": {
+        "call_id": "CALL:fixture_click/tests/test_example.py:4:11:0",
+        "file": "fixture_click/tests/test_example.py",
+        "line": 4,
+        "column": 11,
+        "source": "click.echo(\"Hello\")",
+        "rule": "imported_module",
+        "trace": [
+          "click"
+        ],
+        "module_level": false
+      }
+    }
+  ],
+  "unresolved_calls": [],
+  "ambiguous_calls": [],
+  "conditional_calls": [],
+  "classification_summary": {
+    "total": 0,
+    "categories": {
+      "BUILTIN": 0,
+      "BUILTIN_METHOD": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0,
+      "INTERNAL_CANDIDATE": 0,
+      "INDIRECT_CALL": 0,
+      "FIELD_CHAIN": 0,
+      "RECEIVER_UNKNOWN": 0,
+      "MODULE_LEVEL": 0,
+      "DYNAMIC_UNKNOWN": 0
+    },
+    "original_reasons": {},
+    "scope_context": {},
+    "category_labels": {
+      "BUILTIN": "Python 내장 함수",
+      "BUILTIN_METHOD": "Python 기본 자료형 메서드 추정",
+      "STDLIB": "표준 라이브러리",
+      "EXTERNAL_IMPORT": "외부 의존성(import 근거)",
+      "INTERNAL_CANDIDATE": "내부 호출 후보(미검증)",
+      "INDIRECT_CALL": "변수에 담긴 함수/클래스 간접 호출",
+      "FIELD_CHAIN": "객체 필드의 연속 접근",
+      "RECEIVER_UNKNOWN": "객체 타입 또는 메서드 불명",
+      "MODULE_LEVEL": "최상위 호출의 출발점 미지원",
+      "DYNAMIC_UNKNOWN": "동적 호출/근거 부족"
+    },
+    "warning": "Classification is heuristic triage, not verified internal-call ground truth. No external code was executed; confidence is not a probability."
+  },
+  "call_statuses": [
+    {
+      "call_id": "CALL:fixture_click/tests/test_example.py:4:11:0",
+      "file": "fixture_click/tests/test_example.py",
+      "line": 4,
+      "callee_text": "click.echo",
+      "caller_id": "FUNCTION:tests.test_example.demo",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "FUNCTION:click.utils.echo"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "imported_module"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    }
+  ],
+  "status_summary": {
+    "total": 1,
+    "statuses": {
+      "RESOLVED_INTERNAL": 1,
+      "KNOWN_NON_INTERNAL": 0,
+      "UNKNOWN": 0
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "commit": null
+}

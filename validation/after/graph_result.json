@@ -1,0 +1,497 @@
+{
+  "repository": "fixture",
+  "node_count": 10,
+  "edge_count": 12,
+  "total_call_sites": 6,
+  "resolved_call_sites": 4,
+  "unresolved_call_sites": 2,
+  "module_level_resolved_sites": 0,
+  "collection_indirect_resolved_sites": 0,
+  "nodes": [
+    {
+      "id": "CLASS:app.A",
+      "kind": "CLASS",
+      "name": "A",
+      "canonical_name": "app.A",
+      "file": "fixture/app.py",
+      "line": 1
+    },
+    {
+      "id": "CLASS:app.B",
+      "kind": "CLASS",
+      "name": "B",
+      "canonical_name": "app.B",
+      "file": "fixture/app.py",
+      "line": 3
+    },
+    {
+      "id": "CLASS:app.C",
+      "kind": "CLASS",
+      "name": "C",
+      "canonical_name": "app.C",
+      "file": "fixture/app.py",
+      "line": 4
+    },
+    {
+      "id": "CLASS:app.D",
+      "kind": "CLASS",
+      "name": "D",
+      "canonical_name": "app.D",
+      "file": "fixture/app.py",
+      "line": 6
+    },
+    {
+      "id": "CLASS:app.E",
+      "kind": "CLASS",
+      "name": "E",
+      "canonical_name": "app.E",
+      "file": "fixture/app.py",
+      "line": 8
+    },
+    {
+      "id": "METHOD:app.A.run",
+      "kind": "METHOD",
+      "name": "run",
+      "canonical_name": "app.A.run",
+      "file": "fixture/app.py",
+      "line": 2
+    },
+    {
+      "id": "METHOD:app.C.run",
+      "kind": "METHOD",
+      "name": "run",
+      "canonical_name": "app.C.run",
+      "file": "fixture/app.py",
+      "line": 5
+    },
+    {
+      "id": "METHOD:app.D.go",
+      "kind": "METHOD",
+      "name": "go",
+      "canonical_name": "app.D.go",
+      "file": "fixture/app.py",
+      "line": 7
+    },
+    {
+      "id": "FUNCTION:app.example",
+      "kind": "FUNCTION",
+      "name": "example",
+      "canonical_name": "app.example",
+      "file": "fixture/app.py",
+      "line": 9
+    },
+    {
+      "id": "MODULE:app",
+      "kind": "MODULE",
+      "name": "app",
+      "canonical_name": "app",
+      "file": "fixture/app.py",
+      "line": 1
+    }
+  ],
+  "edges": [
+    {
+      "source": "CLASS:app.A",
+      "target": "METHOD:app.A.run",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 2,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "CLASS:app.C",
+      "target": "METHOD:app.C.run",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 5,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "CLASS:app.D",
+      "target": "METHOD:app.D.go",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 7,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "CLASS:app.B",
+      "target": "CLASS:app.A",
+      "type": "INHERITS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 3,
+        "rule": "declared_base"
+      }
+    },
+    {
+      "source": "CLASS:app.C",
+      "target": "CLASS:app.A",
+      "type": "INHERITS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 4,
+        "rule": "declared_base"
+      }
+    },
+    {
+      "source": "CLASS:app.D",
+      "target": "CLASS:app.B",
+      "type": "INHERITS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 6,
+        "rule": "declared_base"
+      }
+    },
+    {
+      "source": "CLASS:app.D",
+      "target": "CLASS:app.C",
+      "type": "INHERITS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 6,
+        "rule": "declared_base"
+      }
+    },
+    {
+      "source": "CLASS:app.E",
+      "target": "CLASS:app.A",
+      "type": "INHERITS",
+      "evidence": {
+        "file": "fixture/app.py",
+        "line": 8,
+        "rule": "declared_base"
+      }
+    },
+    {
+      "source": "METHOD:app.D.go",
+      "target": "METHOD:app.C.run",
+      "type": "CALLS",
+      "evidence": {
+        "call_id": "CALL:fixture/app.py:7:18:0",
+        "file": "fixture/app.py",
+        "line": 7,
+        "column": 18,
+        "source": "super().run()",
+        "rule": "super_c3_may_call",
+        "trace": [
+          "receiver:app.D",
+          "anchor:app.D",
+          "app.B",
+          "app.C"
+        ],
+        "module_level": false,
+        "certainty": "receiver_hierarchy_may_call"
+      }
+    },
+    {
+      "source": "FUNCTION:app.example",
+      "target": "CLASS:app.D",
+      "type": "INSTANTIATES",
+      "evidence": {
+        "call_id": "CALL:fixture/app.py:10:10:2",
+        "file": "fixture/app.py",
+        "line": 10,
+        "column": 10,
+        "source": "D()",
+        "rule": "flow_reaching_assignment",
+        "trace": [
+          "reference:D@6"
+        ],
+        "module_level": false,
+        "certainty": "definite_within_supported_flow",
+        "reaching_definitions": [
+          {
+            "kind": "reference",
+            "name": "D",
+            "line": 6
+          }
+        ],
+        "may_be_unbound": false
+      }
+    },
+    {
+      "source": "FUNCTION:app.example",
+      "target": "METHOD:app.C.run",
+      "type": "CALLS",
+      "evidence": {
+        "call_id": "CALL:fixture/app.py:11:4:3",
+        "file": "fixture/app.py",
+        "line": 11,
+        "column": 4,
+        "source": "obj.run()",
+        "rule": "instance_flow_reaching_assignment",
+        "trace": [
+          "constructed:D@6",
+          "app.D",
+          "app.B",
+          "app.C"
+        ],
+        "module_level": false,
+        "certainty": "definite_within_supported_flow",
+        "reaching_definitions": [
+          {
+            "kind": "constructed",
+            "name": "D",
+            "line": 6
+          }
+        ],
+        "may_be_unbound": false
+      }
+    },
+    {
+      "source": "FUNCTION:app.example",
+      "target": "CLASS:app.E",
+      "type": "INSTANTIATES",
+      "evidence": {
+        "call_id": "CALL:fixture/app.py:12:12:4",
+        "file": "fixture/app.py",
+        "line": 12,
+        "column": 12,
+        "source": "E()",
+        "rule": "flow_reaching_assignment",
+        "trace": [
+          "reference:E@8"
+        ],
+        "module_level": false,
+        "certainty": "definite_within_supported_flow",
+        "reaching_definitions": [
+          {
+            "kind": "reference",
+            "name": "E",
+            "line": 8
+          }
+        ],
+        "may_be_unbound": false
+      }
+    }
+  ],
+  "unresolved_calls": [
+    {
+      "call_id": "CALL:fixture/app.py:7:18:1",
+      "callee_text": "super",
+      "file": "fixture/app.py",
+      "line": 7,
+      "reason": "unresolved_name_builtin_external_or_dynamic",
+      "caller_id": "METHOD:app.D.go",
+      "category": "BUILTIN",
+      "category_label": "Python 내장 함수",
+      "scope_context": "IN_FUNCTION",
+      "classifier_rule": "python_builtin_unshadowed",
+      "confidence": "high",
+      "candidate_targets": [],
+      "classification_evidence": {
+        "original_reason": "unresolved_name_builtin_external_or_dynamic"
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:13:4:5",
+      "callee_text": "other.run",
+      "file": "fixture/app.py",
+      "line": 13,
+      "reason": "instance_method_unresolved",
+      "caller_id": "FUNCTION:app.example",
+      "category": "RECEIVER_UNKNOWN",
+      "category_label": "객체 타입 또는 메서드 불명",
+      "scope_context": "IN_FUNCTION",
+      "classifier_rule": "receiver_type_not_proven",
+      "confidence": "low",
+      "candidate_targets": [],
+      "classification_evidence": {
+        "original_reason": "instance_method_unresolved"
+      }
+    }
+  ],
+  "ambiguous_calls": [],
+  "conditional_calls": [],
+  "classification_summary": {
+    "total": 2,
+    "categories": {
+      "BUILTIN": 1,
+      "BUILTIN_METHOD": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0,
+      "INTERNAL_CANDIDATE": 0,
+      "INDIRECT_CALL": 0,
+      "FIELD_CHAIN": 0,
+      "RECEIVER_UNKNOWN": 1,
+      "MODULE_LEVEL": 0,
+      "DYNAMIC_UNKNOWN": 0
+    },
+    "original_reasons": {
+      "instance_method_unresolved": 1,
+      "unresolved_name_builtin_external_or_dynamic": 1
+    },
+    "scope_context": {
+      "IN_FUNCTION": 2
+    },
+    "category_labels": {
+      "BUILTIN": "Python 내장 함수",
+      "BUILTIN_METHOD": "Python 기본 자료형 메서드 추정",
+      "STDLIB": "표준 라이브러리",
+      "EXTERNAL_IMPORT": "외부 의존성(import 근거)",
+      "INTERNAL_CANDIDATE": "내부 호출 후보(미검증)",
+      "INDIRECT_CALL": "변수에 담긴 함수/클래스 간접 호출",
+      "FIELD_CHAIN": "객체 필드의 연속 접근",
+      "RECEIVER_UNKNOWN": "객체 타입 또는 메서드 불명",
+      "MODULE_LEVEL": "최상위 호출의 출발점 미지원",
+      "DYNAMIC_UNKNOWN": "동적 호출/근거 부족"
+    },
+    "warning": "Classification is heuristic triage, not verified internal-call ground truth. No external code was executed; confidence is not a probability."
+  },
+  "call_statuses": [
+    {
+      "call_id": "CALL:fixture/app.py:7:18:0",
+      "file": "fixture/app.py",
+      "line": 7,
+      "callee_text": "super().run",
+      "caller_id": "METHOD:app.D.go",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.C.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "MAY_CALL",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "super_c3_may_call"
+        ],
+        "coverage_caveat": "Partial/multiple/conditional candidates."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:7:18:1",
+      "file": "fixture/app.py",
+      "line": 7,
+      "callee_text": "super",
+      "caller_id": "METHOD:app.D.go",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [],
+      "legacy_category": "BUILTIN",
+      "status": "KNOWN_NON_INTERNAL",
+      "origin_kind": "BUILTIN",
+      "certainty": "PROVEN_STATIC_ORIGIN",
+      "evidence": {
+        "rule": "UNSHADOWED_BUILTIN_NAME",
+        "kind": "builtin_namespace",
+        "origin_name": "builtins.super",
+        "note": "Lexical builtin binding only; runtime namespace mutation is out of scope."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:10:10:2",
+      "file": "fixture/app.py",
+      "line": 10,
+      "callee_text": "D",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.D"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:11:4:3",
+      "file": "fixture/app.py",
+      "line": 11,
+      "callee_text": "obj.run",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.C.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "instance_flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:12:12:4",
+      "file": "fixture/app.py",
+      "line": 12,
+      "callee_text": "E",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.E"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:13:4:5",
+      "file": "fixture/app.py",
+      "line": 13,
+      "callee_text": "other.run",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [],
+      "legacy_category": "RECEIVER_UNKNOWN",
+      "status": "UNKNOWN",
+      "origin_kind": "UNKNOWN",
+      "certainty": "UNVERIFIED",
+      "evidence": {
+        "rule": "shadowing_or_conditional_binding",
+        "conflicts": [
+          {
+            "type": "assignment",
+            "line": 12,
+            "control_depth": 0
+          }
+        ],
+        "note": "Legacy category is heuristic, not a verified origin."
+      }
+    }
+  ],
+  "status_summary": {
+    "total": 6,
+    "statuses": {
+      "RESOLVED_INTERNAL": 4,
+      "KNOWN_NON_INTERNAL": 1,
+      "UNKNOWN": 1
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 1,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "commit": null
+}

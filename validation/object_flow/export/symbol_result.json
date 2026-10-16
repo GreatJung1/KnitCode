@@ -1,0 +1,261 @@
+{
+  "repository": "14_field_factory",
+  "analysis_sources": {
+    "14_field_factory/app.py": "class Worker:\n    def run(self): pass\n\ndef make():\n    return Worker()\n\nclass Controller:\n    def __init__(self):\n        self.worker = make()\n    def execute(self):\n        self.worker.run()\n"
+  },
+  "symbol_count": 6,
+  "source_modules": [
+    "app"
+  ],
+  "overload_declarations": [],
+  "symbols": [
+    {
+      "id": "CLASS:app.Worker",
+      "kind": "CLASS",
+      "name": "Worker",
+      "qualified_name": "Worker",
+      "canonical_name": "app.Worker",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "<module>",
+      "bases": [],
+      "decorators": [],
+      "class_keywords": [],
+      "line": 1,
+      "column": 0,
+      "end_line": 2,
+      "end_column": 23
+    },
+    {
+      "id": "CLASS:app.Controller",
+      "kind": "CLASS",
+      "name": "Controller",
+      "qualified_name": "Controller",
+      "canonical_name": "app.Controller",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "<module>",
+      "bases": [],
+      "decorators": [],
+      "class_keywords": [],
+      "line": 7,
+      "column": 0,
+      "end_line": 11,
+      "end_column": 25
+    },
+    {
+      "id": "METHOD:app.Worker.run",
+      "kind": "METHOD",
+      "name": "run",
+      "qualified_name": "Worker.run",
+      "canonical_name": "app.Worker.run",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "Worker",
+      "parameters": [
+        "self"
+      ],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 2,
+      "column": 4,
+      "end_line": 2,
+      "end_column": 23
+    },
+    {
+      "id": "FUNCTION:app.make",
+      "kind": "FUNCTION",
+      "name": "make",
+      "qualified_name": "make",
+      "canonical_name": "app.make",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "<module>",
+      "parameters": [],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 4,
+      "column": 0,
+      "end_line": 5,
+      "end_column": 19
+    },
+    {
+      "id": "METHOD:app.Controller.__init__",
+      "kind": "METHOD",
+      "name": "__init__",
+      "qualified_name": "Controller.__init__",
+      "canonical_name": "app.Controller.__init__",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "Controller",
+      "parameters": [
+        "self"
+      ],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 8,
+      "column": 4,
+      "end_line": 9,
+      "end_column": 28
+    },
+    {
+      "id": "METHOD:app.Controller.execute",
+      "kind": "METHOD",
+      "name": "execute",
+      "qualified_name": "Controller.execute",
+      "canonical_name": "app.Controller.execute",
+      "module": "app",
+      "file": "14_field_factory/app.py",
+      "scope": "Controller",
+      "parameters": [
+        "self"
+      ],
+      "parameter_annotations": {},
+      "return_annotation": null,
+      "decorators": [],
+      "async": false,
+      "alternate_definition_lines": [],
+      "overload_lines": [],
+      "control_depth": 0,
+      "line": 10,
+      "column": 4,
+      "end_line": 11,
+      "end_column": 25
+    }
+  ],
+  "imports": [],
+  "calls": [
+    {
+      "id": "CALL:14_field_factory/app.py:5:11:0",
+      "file": "14_field_factory/app.py",
+      "module": "app",
+      "caller_id": "FUNCTION:app.make",
+      "scope": "make",
+      "callee_text": "Worker",
+      "syntax_type": "NAME",
+      "positional_argument_count": 0,
+      "keyword_arguments": [],
+      "source": "Worker()",
+      "flow": {
+        "variable": "Worker",
+        "binding": {
+          "options": [
+            {
+              "kind": "reference",
+              "name": "Worker",
+              "line": 1
+            }
+          ],
+          "may_be_unbound": false
+        },
+        "tracked": true
+      },
+      "line": 5,
+      "column": 11,
+      "end_line": 5,
+      "end_column": 19
+    },
+    {
+      "id": "CALL:14_field_factory/app.py:9:22:1",
+      "file": "14_field_factory/app.py",
+      "module": "app",
+      "caller_id": "METHOD:app.Controller.__init__",
+      "scope": "Controller.__init__",
+      "callee_text": "make",
+      "syntax_type": "NAME",
+      "positional_argument_count": 0,
+      "keyword_arguments": [],
+      "source": "make()",
+      "flow": {
+        "variable": "make",
+        "binding": {
+          "options": [
+            {
+              "kind": "reference",
+              "name": "make",
+              "line": 4
+            }
+          ],
+          "may_be_unbound": false
+        },
+        "tracked": true
+      },
+      "line": 9,
+      "column": 22,
+      "end_line": 9,
+      "end_column": 28
+    },
+    {
+      "id": "CALL:14_field_factory/app.py:11:8:2",
+      "file": "14_field_factory/app.py",
+      "module": "app",
+      "caller_id": "METHOD:app.Controller.execute",
+      "scope": "Controller.execute",
+      "callee_text": "self.worker.run",
+      "syntax_type": "ATTRIBUTE",
+      "positional_argument_count": 0,
+      "keyword_arguments": [],
+      "source": "self.worker.run()",
+      "flow": {
+        "variable": "self",
+        "binding": {
+          "options": [
+            {
+              "kind": "unknown",
+              "name": null,
+              "line": 10
+            }
+          ],
+          "may_be_unbound": false
+        },
+        "tracked": true
+      },
+      "line": 11,
+      "column": 8,
+      "end_line": 11,
+      "end_column": 25
+    }
+  ],
+  "assignments": [
+    {
+      "id": "ASSIGNMENT:14_field_factory/app.py:9:8:0",
+      "file": "14_field_factory/app.py",
+      "module": "app",
+      "type": "ASSIGN",
+      "targets": [
+        "self.worker"
+      ],
+      "value": "make()",
+      "scope": "Controller.__init__",
+      "binding": {
+        "kind": "call",
+        "callee": "make"
+      },
+      "control_depth": 0,
+      "contained_call_ids": [
+        "CALL:14_field_factory/app.py:9:22:1"
+      ],
+      "line": 9,
+      "column": 8,
+      "end_line": 9,
+      "end_column": 28
+    }
+  ],
+  "binding_hazards": [],
+  "commit": null
+}

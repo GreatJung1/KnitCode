@@ -1,0 +1,15 @@
+{
+  "original_c3_unchanged_during_verification": true,
+  "all_existing_test_files_unchanged": true,
+  "changed_existing_engine_files": [
+    "graph_builder.py",
+    "call_status.py",
+    "symbol_builder.py",
+    "ast_parser.py"
+  ],
+  "all_22_graph_and_status_key_sets_preserved": true,
+  "JSON_CSV_HTML_export": "PASS",
+  "new_edge_evidence": "PASS",
+  "time_ratio": 1.3691051393678768,
+  "traced_memory_ratio": 1.0697026111952463
+}

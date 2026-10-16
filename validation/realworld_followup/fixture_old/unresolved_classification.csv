@@ -1,0 +1,2 @@
+﻿file,line,callee_text,caller_id,reason,category,category_label,scope_context,classifier_rule,confidence,candidate_targets,classification_evidence
+fixture_click/tests/test_example.py,4,click.echo,FUNCTION:tests.test_example.demo,external_or_dynamic_attribute,EXTERNAL_IMPORT,외부 의존성(import 근거),IN_FUNCTION,traced_external_reexport,medium,,"{'original_reason': 'external_or_dynamic_attribute', 'imported_module': 'click', 'import_line': 1, 'import_chain': [[]], 'origin_candidates': [{'kind': 'external', 'name': 'click'}]}"

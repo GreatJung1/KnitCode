@@ -21,7 +21,8 @@ def normalize_path(path: str) -> str:
     return path.replace("\\", "/").lstrip("./")
 
 
-def module_name_from_file(file_path: str, repository_name: str | None) -> str:
+def module_name_from_file(file_path: str, repository_name: str | None,
+                          source_roots: tuple[str, ...] | list[str] = ()) -> str:
     """
     sample_repo\\payment.py -> payment
     sample_repo\\tests\\test_payment.py -> tests.test_payment
@@ -35,6 +36,14 @@ def module_name_from_file(file_path: str, repository_name: str | None) -> str:
             normalized = normalized[len(prefix):]
         elif f"/{prefix}" in normalized:
             normalized = normalized.split(f"/{prefix}", 1)[1]
+
+    # File evidence retains its full repository-relative path; only canonical
+    # import identities discard a declared source-root directory.
+    for source_root in sorted(source_roots, key=len, reverse=True):
+        prefix = normalize_path(source_root).rstrip('/') + '/'
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
 
     if normalized.endswith("/__init__.py"):
         normalized = normalized[:-len("/__init__.py")]
@@ -72,6 +81,7 @@ def span_contains(outer: dict[str, Any], inner: dict[str, Any]) -> bool:
 
 def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
     repository = ast_result.get("repository")
+    source_roots = ast_result.get("source_roots") or []
 
     symbols: list[dict[str, Any]] = []
     imports: list[dict[str, Any]] = []
@@ -95,7 +105,7 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
 
     for file_info in ast_result.get('files', []):
         file_path = normalize_path(file_info.get('file', ''))
-        module = module_name_from_file(file_path, repository)
+        module = module_name_from_file(file_path, repository, source_roots)
         for cls in file_info.get('classes', []):
             qname = cls.get('qualified_name') or cls.get('name')
             canonical = '.'.join(x for x in (module, qname) if x)
@@ -105,6 +115,7 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
                 'qualified_name': qname, 'canonical_name': canonical,
                 'module': module, 'file': file_path, 'scope': cls.get('scope'),
                 'bases': cls.get('bases', []), 'decorators': cls.get('decorators', []),
+                'class_keywords': cls.get('class_keywords', []),
                 **location(cls),
             })
             local_index[(file_path, qname)] = symbol_id
@@ -138,25 +149,56 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
             if not concrete:
                 # An @overload-only set has no callable implementation.
                 continue
-            # For repeated non-overload definitions, follow Python's normal
-            # straight-line last-binding semantics. Preserve collision evidence.
-            fn = concrete[-1]
-            symbol_id = f"{kind}:{canonical}"
-            symbols.append({
-                'id': symbol_id, 'kind': kind, 'name': fn.get('name'),
-                'qualified_name': qname, 'canonical_name': canonical,
-                'module': module, 'file': file_path, 'scope': fn.get('scope'),
-                'parameters': fn.get('parameters', []),
-                'parameter_annotations': fn.get('parameter_annotations', {}),
-                'return_annotation': fn.get('return_annotation'),
-                'decorators': fn.get('decorators', []),
-                'async': fn.get('async', False),
-                'alternate_definition_lines': [f.get('line') for f in concrete[:-1]],
-                'overload_lines': [f.get('line') for f in declarations],
-                'control_depth': fn.get('control_depth', 0),
-                **location(fn),
-            })
-            local_index[(file_path, qname)] = symbol_id
+            # Preserve distinct, unconditional module function bindings. Other
+            # redefinitions (conditional, class, local) need control-flow- or
+            # method-specific semantics; keep their existing conservative
+            # representation instead of creating speculative target edges.
+            preserve_versions = (kind == 'FUNCTION' and len(concrete) > 1 and
+                                 all(fn.get('scope') == '<module>' and
+                                     not fn.get('control_depth') and
+                                     not fn.get('decorators') for fn in concrete))
+            selected = concrete if preserve_versions else concrete[-1:]
+            for version, fn in enumerate(selected):
+                is_latest = version == len(selected) - 1
+                base_id = f"{kind}:{canonical}"
+                symbol_id = (base_id if is_latest else
+                             f"{base_id}@L{fn.get('line')}C{fn.get('column')}")
+                symbols.append({
+                    'id': symbol_id, 'kind': kind, 'name': fn.get('name'),
+                    'qualified_name': qname, 'canonical_name': canonical,
+                    'module': module, 'file': file_path, 'scope': fn.get('scope'),
+                    'parameters': fn.get('parameters', []),
+                    'parameter_annotations': fn.get('parameter_annotations', {}),
+                    'return_annotation': fn.get('return_annotation'),
+                    'decorators': fn.get('decorators', []),
+                    'async': fn.get('async', False),
+                    'alternate_definition_lines': ([f.get('line') for f in concrete[:-1]]
+                                                   if is_latest else []),
+                    'overload_lines': [f.get('line') for f in declarations],
+                    'control_depth': fn.get('control_depth', 0),
+                    **location(fn),
+                })
+                if is_latest:
+                    local_index[(file_path, qname)] = symbol_id
+
+    # A call inside an earlier function definition belongs to that function,
+    # not to a later redefinition bearing the same lexical name.
+    scope_definitions: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for s in symbols:
+        if s['kind'] in ('FUNCTION', 'METHOD', 'LAMBDA'):
+            scope_definitions.setdefault((s['file'], s['qualified_name']), []).append(s)
+
+    def execution_caller(file_path: str, execution_scope: str, call: dict) -> str | None:
+        definitions = scope_definitions.get((file_path, execution_scope), [])
+        if len(definitions) <= 1:
+            return local_index.get((file_path, execution_scope))
+        # Containment selects which function body the call was extracted from.
+        line = call.get('line') or 0
+        containing = [s for s in definitions if
+                      (s.get('line') or 0) <= line <= (s.get('end_line') or 0)]
+        if containing:
+            return max(containing, key=lambda s: s.get('line') or 0)['id']
+        return local_index.get((file_path, execution_scope))
 
     # Class redefinitions may also share a fully qualified name; one stable
     # graph identity per canonical ID is required. Preserve the last binding.
@@ -165,7 +207,7 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
     # 2) import / call / assignment만 추려 저장
     for file_info in ast_result.get("files", []):
         file_path = normalize_path(file_info.get("file", ""))
-        module = module_name_from_file(file_path, repository)
+        module = module_name_from_file(file_path, repository, source_roots)
 
         for idx, imp in enumerate(file_info.get("imports", [])):
             import_type = imp.get("type")
@@ -202,7 +244,8 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
 
         for idx, call in enumerate(file_info.get("calls", [])):
             scope = call.get("scope")
-            caller_id = local_index.get((file_path, scope))
+            execution_scope = call.get('execution_scope', scope)
+            caller_id = execution_caller(file_path, execution_scope, call)
 
             call_item = {
                 "id": f"CALL:{file_path}:{call.get('line')}:{call.get('column')}:{idx}",
@@ -210,6 +253,8 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
                 "module": module,
                 "caller_id": caller_id,
                 "scope": scope,
+                "execution_scope": execution_scope,
+                "execution_phase": call.get('execution_phase', 'unspecified'),
                 "callee_text": call.get("callee_text"),
                 "syntax_type": call.get("syntax_type"),
                 "positional_argument_count": call.get("positional_argument_count", 0),
@@ -248,8 +293,10 @@ def build_symbol_result(ast_result: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "repository": repository,
+        "source_roots": source_roots,
+        "analysis_sources": {normalize_path(f['file']): f['source'] for f in ast_result.get('files', []) if 'source' in f},
         "symbol_count": len(symbols),
-        "source_modules": sorted({module_name_from_file(normalize_path(f.get("file", "")), repository) for f in ast_result.get("files", [])}),
+        "source_modules": sorted({module_name_from_file(normalize_path(f.get("file", "")), repository, source_roots) for f in ast_result.get("files", [])}),
         "overload_declarations": overload_declarations,
         "symbols": symbols,
         "imports": imports,

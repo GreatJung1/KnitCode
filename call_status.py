@@ -276,7 +276,9 @@ class StatusAnnotator:
             targets = sorted({e['target'] for e in edges if e['type'] == 'CALLS' or e['type'] == 'INSTANTIATES'})
             row = {'call_id': cid, 'file': call['file'], 'line': call.get('line'),
                    'callee_text': call.get('callee_text'), 'caller_id': call.get('caller_id'),
-                   'scope_context': 'IN_FUNCTION' if call.get('caller_id') else 'MODULE_LEVEL',
+                   'scope_context': ('IN_CLASS_BODY' if call.get('execution_phase') == 'class_body'
+                                     else 'IN_LAMBDA' if call.get('execution_phase') == 'lambda_body'
+                                     else 'IN_FUNCTION' if call.get('caller_id') else 'MODULE_LEVEL'),
                    'target_ids': targets, 'legacy_category': legacy.get('category') if legacy else None}
             if edges:
                 # This means the analyzer found a source-backed may-call edge,
@@ -284,7 +286,7 @@ class StatusAnnotator:
                 partial = (cid in conditional or cid in ambiguous or
                            any('partial_type_candidates' in (e.get('evidence', {}).get('rule') or '') or
                                e.get('evidence', {}).get('may_be_unbound') or
-                               e.get('evidence', {}).get('certainty') == 'declared_parameter_type_may_call'
+                               e.get('evidence', {}).get('certainty') in ('declared_parameter_type_may_call', 'receiver_hierarchy_may_call', 'interprocedural_may_call')
                                for e in edges))
                 row.update(status='RESOLVED_INTERNAL', origin_kind='INTERNAL',
                            certainty='MAY_CALL' if partial else 'SOURCE_BACKED',

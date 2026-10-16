@@ -1,0 +1,42 @@
+{
+  "repository": "fixture_click",
+  "commit": null,
+  "summary": {
+    "total": 1,
+    "statuses": {
+      "RESOLVED_INTERNAL": 1,
+      "KNOWN_NON_INTERNAL": 0,
+      "UNKNOWN": 0
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "calls": [
+    {
+      "call_id": "CALL:fixture_click/tests/test_example.py:4:11:0",
+      "file": "fixture_click/tests/test_example.py",
+      "line": 4,
+      "callee_text": "click.echo",
+      "caller_id": "FUNCTION:tests.test_example.demo",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "FUNCTION:click.utils.echo"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "imported_module"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    }
+  ]
+}

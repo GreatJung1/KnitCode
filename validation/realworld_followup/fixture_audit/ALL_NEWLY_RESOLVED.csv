@@ -1,0 +1,4 @@
+﻿change,call_id,file,line,source,caller,group,old_status,old_origin,new_status,old_targets,new_targets,relations,rules,all_target_nodes_exist,target_definition_locations,source_excerpt,source_relevant_imports,target_definition_excerpts,manual_label,manual_evidence,old_targets_normalized
+newly_resolved,CALL:fixture_click/tests/test_example.py:4:11:0,fixture_click/tests/test_example.py,4,"click.echo(""Hello"")",FUNCTION:tests.test_example.demo,test,KNOWN_NON_INTERNAL,EXTERNAL_IMPORT,RESOLVED_INTERNAL,[],"[""FUNCTION:click.utils.echo""]","[""CALLS""]","[""imported_module""]",True,"[{""target"": ""FUNCTION:click.utils.echo"", ""file"": ""fixture_click/src/click/utils.py"", ""line"": 1}]","2: 
+3: def demo():
+4:     return click.echo(""Hello"")",1: import click,"[{""target"": ""FUNCTION:click.utils.echo"", ""excerpt"": ""1: def echo(value):\n2:     return value""}]",UNREVIEWED,,

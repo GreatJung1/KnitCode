@@ -51,6 +51,10 @@ class FactsVisitor(ast.NodeVisitor):
         self.source = source
         self.scopes: list[str] = []
         self.scope_types: list[str] = []
+        # Lexical scope and executing caller are different for definitions,
+        # class bodies, and deferred lambda bodies.
+        self.execution_owners: list[str] = ['<module>']
+        self.execution_phases: list[str] = ['module_initialization']
         self.control_depth = 0
         self.classes: list[dict] = []
         self.functions: list[dict] = []
@@ -63,38 +67,112 @@ class FactsVisitor(ast.NodeVisitor):
     def scope(self) -> str:
         return '.'.join(self.scopes) or '<module>'
 
-    def _record_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, kind: str):
+    def _visit_with_phase(self, nodes, phase: str) -> None:
+        self.execution_phases.append(phase)
+        try:
+            for node in nodes:
+                if node is not None:
+                    self.visit(node)
+        finally:
+            self.execution_phases.pop()
+
+    def _visit_function_definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef, kind: str) -> None:
+        # Decorators, defaults, and (eager) annotations are evaluated when
+        # the *enclosing* context executes the definition, not in the body.
         qname = '.'.join([*self.scopes, node.name])
-        data = {"name": node.name, "qualified_name": qname,
-                "scope": self.scope, "control_depth": self.control_depth, "decorators": [text_of(self.source, x) for x in node.decorator_list], **loc(node)}
-        if kind == 'CLASS':
-            data['bases'] = [expr_name(x) or text_of(self.source, x) for x in node.bases]
-            self.classes.append(data)
-        else:
-            args = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
-            data.update({"kind": kind, "async": isinstance(node, ast.AsyncFunctionDef),
-                         "parameters": [x.arg for x in args],
-                         # Only source annotations, never runtime-evaluated hints.
-                         "parameter_annotations": {x.arg: text_of(self.source, x.annotation)
-                                                   for x in args if x.annotation is not None},
-                         "return_annotation": text_of(self.source, node.returns)})
-            self.functions.append(data)
+        args = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        self.functions.append({
+            'name': node.name, 'qualified_name': qname,
+            'scope': self.scope, 'control_depth': self.control_depth,
+            'decorators': [text_of(self.source, x) for x in node.decorator_list],
+            'kind': kind, 'async': isinstance(node, ast.AsyncFunctionDef),
+            'parameters': [x.arg for x in args],
+            'parameter_annotations': {x.arg: text_of(self.source, x.annotation)
+                                      for x in args if x.annotation is not None},
+            'return_annotation': text_of(self.source, node.returns),
+            **loc(node),
+        })
+        self._visit_with_phase(node.decorator_list, 'definition_decorator')
+        self._visit_with_phase([*node.args.defaults, *node.args.kw_defaults], 'definition_default')
+        # Python 3.13 may evaluate annotations eagerly; future annotations
+        # and Python 3.14+ differ. Preserve these call sites with an explicit
+        # version-sensitive execution phase rather than dropping evidence.
+        annotations = [arg.annotation for arg in args]
+        annotations.extend([node.args.vararg.annotation] if node.args.vararg else [])
+        annotations.extend([node.args.kwarg.annotation] if node.args.kwarg else [])
+        annotations.append(node.returns)
+        self._visit_with_phase(annotations, 'definition_annotation')
         self.scopes.append(node.name)
         self.scope_types.append(kind)
-        self.generic_visit(node)
-        self.scope_types.pop()
-        self.scopes.pop()
+        self.execution_owners.append(qname)
+        self.execution_phases.append('function_body')
+        try:
+            for stmt in node.body:
+                self.visit(stmt)
+        finally:
+            self.execution_phases.pop()
+            self.execution_owners.pop()
+            self.scope_types.pop()
+            self.scopes.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef):
-        self._record_def(node, 'CLASS')
+        qname = '.'.join([*self.scopes, node.name])
+        self.classes.append({
+            'name': node.name, 'qualified_name': qname,
+            'scope': self.scope, 'control_depth': self.control_depth,
+            'decorators': [text_of(self.source, x) for x in node.decorator_list],
+            'bases': [text_of(self.source, x) for x in node.bases],
+            'class_keywords': [kw.arg for kw in node.keywords],
+            **loc(node),
+        })
+        self._visit_with_phase(node.decorator_list, 'class_decorator')
+        self._visit_with_phase([*node.bases, *(kw.value for kw in node.keywords)], 'class_header')
+        # Executing a class body does not execute an instance method. Its
+        # caller is whoever executes the class definition (often the module).
+        self.scopes.append(node.name)
+        self.scope_types.append('CLASS')
+        self.execution_phases.append('class_body')
+        try:
+            for stmt in node.body:
+                self.visit(stmt)
+        finally:
+            self.execution_phases.pop()
+            self.scope_types.pop()
+            self.scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
         kind = 'METHOD' if self.scope_types and self.scope_types[-1] == 'CLASS' else 'FUNCTION'
-        self._record_def(node, kind)
+        self._visit_function_definition(node, kind)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
         kind = 'METHOD' if self.scope_types and self.scope_types[-1] == 'CLASS' else 'FUNCTION'
-        self._record_def(node, kind)
+        self._visit_function_definition(node, kind)
+
+    def visit_Lambda(self, node: ast.Lambda):
+        # Evaluating a lambda creates a function object; its body runs later.
+        self._visit_with_phase([*node.args.defaults, *node.args.kw_defaults], 'lambda_default')
+        name = f'<lambda@{node.lineno}:{node.col_offset}>'
+        qname = '.'.join([*self.scopes, name])
+        params = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        self.functions.append({
+            'name': name, 'qualified_name': qname, 'scope': self.scope,
+            'control_depth': self.control_depth, 'decorators': [],
+            'kind': 'LAMBDA', 'async': False,
+            'parameters': [arg.arg for arg in params],
+            'parameter_annotations': {}, 'return_annotation': None,
+            **loc(node),
+        })
+        self.scopes.append(name)
+        self.scope_types.append('LAMBDA')
+        self.execution_owners.append(qname)
+        self.execution_phases.append('lambda_body')
+        try:
+            self.visit(node.body)
+        finally:
+            self.execution_phases.pop()
+            self.execution_owners.pop()
+            self.scope_types.pop()
+            self.scopes.pop()
 
     def visit_Import(self, node: ast.Import):
         for alias in node.names:
@@ -112,7 +190,10 @@ class FactsVisitor(ast.NodeVisitor):
         name = expr_name(node.func)
         self.calls.append({"callee_text": name or text_of(self.source, node.func),
                            "syntax_type": 'NAME' if isinstance(node.func, ast.Name) else 'ATTRIBUTE' if isinstance(node.func, ast.Attribute) else 'COMPLEX',
-                           "scope": self.scope, "positional_argument_count": len(node.args),
+                           "scope": self.scope,
+                           "execution_scope": self.execution_owners[-1],
+                           "execution_phase": self.execution_phases[-1],
+                           "positional_argument_count": len(node.args),
                            "keyword_arguments": [kw.arg for kw in node.keywords],
                            "source": text_of(self.source, node), **loc(node)})
         self.generic_visit(node)
@@ -217,10 +298,39 @@ class FactsVisitor(ast.NodeVisitor):
         self.control_depth -= 1
 
 
-def scan_repository(root: str | Path) -> dict[str, Any]:
+def detect_source_roots(root: Path) -> list[str]:
+    """Recognize unambiguous conventional ``src/<package>`` layouts.
+
+    Do not interpret an actual ``src`` Python package as an import root, and
+    do not merge two packages with the same name across different roots.
+    Explicit --source-root overrides this conservative heuristic.
+    """
+    src = root / 'src'
+    if not src.is_dir() or (src / '__init__.py').exists():
+        return []
+    packages = [p.name for p in src.iterdir()
+                if p.is_dir() and p.name.isidentifier() and (p / '__init__.py').is_file()]
+    if not packages or any((root / name).exists() for name in packages):
+        return []
+    return ['src']
+
+
+def scan_repository(root: str | Path, *, source_roots: list[str] | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Repository folder not found: {root}")
+    if source_roots is None:
+        source_roots = detect_source_roots(root)
+    else:
+        validated = []
+        for entry in source_roots:
+            rel = Path(entry)
+            if rel.is_absolute() or '..' in rel.parts or not (root / rel).is_dir():
+                raise ValueError(f'Invalid source root: {entry!r}')
+            normalized = rel.as_posix().strip('./')
+            if normalized:
+                validated.append(normalized)
+        source_roots = sorted(set(validated), key=len, reverse=True)
     files: list[dict] = []
     errors: list[dict] = []
     for file in sorted(root.rglob('*.py')):
@@ -240,10 +350,11 @@ def scan_repository(root: str | Path) -> dict[str, Any]:
                 snap = flow.get((call.get('line'), call.get('column')))
                 if snap is not None:
                     call['flow'] = snap
-            files.append({"file": relative, "classes": visitor.classes, "functions": visitor.functions,
+            files.append({"file": relative, "source": source, "classes": visitor.classes, "functions": visitor.functions,
                           "imports": visitor.imports, "calls": visitor.calls, "assignments": visitor.assignments,
                           "binding_hazards": visitor.binding_hazards})
         except (SyntaxError, UnicodeError, OSError) as exc:
             errors.append({"file": relative, "type": type(exc).__name__, "message": str(exc)})
-    return {"repository": root.name, "root": str(root), "python_file_count": len(files),
+    return {"repository": root.name, "root": str(root), "source_roots": source_roots,
+            "python_file_count": len(files),
             "parse_errors": errors, "files": files}

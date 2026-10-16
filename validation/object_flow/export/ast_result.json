@@ -1,0 +1,214 @@
+{
+  "repository": "14_field_factory",
+  "root": "/mnt/data/knitcode_review_2026_10_16/knitcode_v25_benchmark/cases/14_field_factory",
+  "python_file_count": 1,
+  "parse_errors": [],
+  "files": [
+    {
+      "file": "14_field_factory/app.py",
+      "source": "class Worker:\n    def run(self): pass\n\ndef make():\n    return Worker()\n\nclass Controller:\n    def __init__(self):\n        self.worker = make()\n    def execute(self):\n        self.worker.run()\n",
+      "classes": [
+        {
+          "name": "Worker",
+          "qualified_name": "Worker",
+          "scope": "<module>",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 1,
+          "column": 0,
+          "end_line": 2,
+          "end_column": 23,
+          "bases": [],
+          "class_keywords": []
+        },
+        {
+          "name": "Controller",
+          "qualified_name": "Controller",
+          "scope": "<module>",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 7,
+          "column": 0,
+          "end_line": 11,
+          "end_column": 25,
+          "bases": [],
+          "class_keywords": []
+        }
+      ],
+      "functions": [
+        {
+          "name": "run",
+          "qualified_name": "Worker.run",
+          "scope": "Worker",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 2,
+          "column": 4,
+          "end_line": 2,
+          "end_column": 23,
+          "kind": "METHOD",
+          "async": false,
+          "parameters": [
+            "self"
+          ],
+          "parameter_annotations": {},
+          "return_annotation": null
+        },
+        {
+          "name": "make",
+          "qualified_name": "make",
+          "scope": "<module>",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 4,
+          "column": 0,
+          "end_line": 5,
+          "end_column": 19,
+          "kind": "FUNCTION",
+          "async": false,
+          "parameters": [],
+          "parameter_annotations": {},
+          "return_annotation": null
+        },
+        {
+          "name": "__init__",
+          "qualified_name": "Controller.__init__",
+          "scope": "Controller",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 8,
+          "column": 4,
+          "end_line": 9,
+          "end_column": 28,
+          "kind": "METHOD",
+          "async": false,
+          "parameters": [
+            "self"
+          ],
+          "parameter_annotations": {},
+          "return_annotation": null
+        },
+        {
+          "name": "execute",
+          "qualified_name": "Controller.execute",
+          "scope": "Controller",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 10,
+          "column": 4,
+          "end_line": 11,
+          "end_column": 25,
+          "kind": "METHOD",
+          "async": false,
+          "parameters": [
+            "self"
+          ],
+          "parameter_annotations": {},
+          "return_annotation": null
+        }
+      ],
+      "imports": [],
+      "calls": [
+        {
+          "callee_text": "Worker",
+          "syntax_type": "NAME",
+          "scope": "make",
+          "positional_argument_count": 0,
+          "keyword_arguments": [],
+          "source": "Worker()",
+          "line": 5,
+          "column": 11,
+          "end_line": 5,
+          "end_column": 19,
+          "flow": {
+            "variable": "Worker",
+            "binding": {
+              "options": [
+                {
+                  "kind": "reference",
+                  "name": "Worker",
+                  "line": 1
+                }
+              ],
+              "may_be_unbound": false
+            },
+            "tracked": true
+          }
+        },
+        {
+          "callee_text": "make",
+          "syntax_type": "NAME",
+          "scope": "Controller.__init__",
+          "positional_argument_count": 0,
+          "keyword_arguments": [],
+          "source": "make()",
+          "line": 9,
+          "column": 22,
+          "end_line": 9,
+          "end_column": 28,
+          "flow": {
+            "variable": "make",
+            "binding": {
+              "options": [
+                {
+                  "kind": "reference",
+                  "name": "make",
+                  "line": 4
+                }
+              ],
+              "may_be_unbound": false
+            },
+            "tracked": true
+          }
+        },
+        {
+          "callee_text": "self.worker.run",
+          "syntax_type": "ATTRIBUTE",
+          "scope": "Controller.execute",
+          "positional_argument_count": 0,
+          "keyword_arguments": [],
+          "source": "self.worker.run()",
+          "line": 11,
+          "column": 8,
+          "end_line": 11,
+          "end_column": 25,
+          "flow": {
+            "variable": "self",
+            "binding": {
+              "options": [
+                {
+                  "kind": "unknown",
+                  "name": null,
+                  "line": 10
+                }
+              ],
+              "may_be_unbound": false
+            },
+            "tracked": true
+          }
+        }
+      ],
+      "assignments": [
+        {
+          "type": "ASSIGN",
+          "targets": [
+            "self.worker"
+          ],
+          "value": "make()",
+          "scope": "Controller.__init__",
+          "binding": {
+            "kind": "call",
+            "callee": "make"
+          },
+          "control_depth": 0,
+          "line": 9,
+          "column": 8,
+          "end_line": 9,
+          "end_column": 28
+        }
+      ],
+      "binding_hazards": []
+    }
+  ],
+  "commit": null
+}

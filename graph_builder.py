@@ -4,6 +4,7 @@ May-call edges are generated for finite class candidates from a for-loop.
 No cross-file name-only guessing: external/unknown calls remain unresolved.
 """
 from __future__ import annotations
+import ast
 from collections import defaultdict
 from import_resolution import canonical_import, ImportOrigins
 from typing import Any
@@ -25,6 +26,9 @@ class Resolver:
         self.classes = {}
         self.assignments = defaultdict(list)
         self.imports = defaultdict(list)
+        self._mro_cache = {}
+        self._generic_check_active = set()
+        self._generic_getitem_cache = {}
         for s in self.symbols:
             self.by_canonical[s['canonical_name']].append(s)
             self.by_id[s['id']] = s
@@ -71,31 +75,353 @@ class Resolver:
                 return self.classes[candidate]
         return None
 
-    def _get_bases(self, cls: dict, seen: set[str] | None = None) -> list[dict]:
+    # These two CPython stdlib base classes have a known, fixed hierarchy.
+    # Treat them as MRO-only nodes, never as source-backed callable targets.
+    _KNOWN_STDLIB_BASES = frozenset({'typing.Generic', 'abc.ABC'})
+
+    def _delegates_generic_getitem(self, symbol: dict) -> bool:
+        """Admit a custom __class_getitem__ only when every return is super().
+
+        For example, Click ParamType fills in omitted type parameters and then
+        delegates to typing.Generic.__class_getitem__. User-written methods
+        returning unrelated classes/aliases must stay opaque.
+        """
+        key = (symbol['file'], symbol.get('line'))
+        if key in self._generic_getitem_cache:
+            return self._generic_getitem_cache[key]
+        result = False
+        source = (self.data.get('analysis_sources') or {}).get(symbol['file'])
+        if source:
+            try:
+                tree = ast.parse(source)
+                matches = [n for n in ast.walk(tree)
+                           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                           and n.name == '__class_getitem__' and n.lineno == symbol.get('line')]
+                if len(matches) == 1:
+                    fn = matches[0]
+                    # Do not certify a function if super is rebound locally.
+                    shadows_super = any(isinstance(n, (ast.Name, ast.arg)) and
+                                        (n.id if isinstance(n, ast.Name) else n.arg) == 'super' and
+                                        (isinstance(n, ast.arg) or isinstance(n.ctx, (ast.Store, ast.Del)))
+                                        for n in ast.walk(fn))
+                    returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
+                    if returns and not shadows_super:
+                        def delegated(node):
+                            value = node.value
+                            return (isinstance(value, ast.Call)
+                                    and isinstance(value.func, ast.Attribute)
+                                    and value.func.attr == '__class_getitem__'
+                                    and isinstance(value.func.value, ast.Call)
+                                    and isinstance(value.func.value.func, ast.Name)
+                                    and value.func.value.func.id == 'super'
+                                    and not value.func.value.args
+                                    and not value.func.value.keywords)
+                        result = all(delegated(node) for node in returns)
+            except (SyntaxError, ValueError):
+                pass
+        self._generic_getitem_cache[key] = result
+        return result
+
+    def _generic_alias_is_class(self, cls: dict) -> bool:
+        """Require source-backed Generic ancestry and no opaque subscription override."""
+        key = cls['canonical_name']
+        if key in self._generic_check_active:
+            return False
+        self._generic_check_active.add(key)
+        try:
+            order, status = self._mro(cls)
+            if status != 'complete' or 'typing.Generic' not in order:
+                return False
+            for canonical in order:
+                if canonical not in self.classes:
+                    continue
+                parent = self.classes[canonical]
+                if any('__class_getitem__' in ass.get('targets', [])
+                       for ass in self.assignments.get((parent['file'], parent['qualified_name']), [])):
+                    return False
+                for method in self._lookup(canonical + '.__class_getitem__'):
+                    if method['kind'] != 'METHOD' or not self._delegates_generic_getitem(method):
+                        return False
+            return True
+        finally:
+            self._generic_check_active.remove(key)
+
+    @staticmethod
+    def _safe_union_operand(expr: ast.AST, imports: dict[str, str], context: dict,
+                            binding_check) -> bool:
+        """Only trusted builtin/stdlib type operands can form an eager | union."""
+        if isinstance(expr, ast.Name):
+            return (expr.id in {'str', 'bytes', 'int', 'bool', 'float', 'object'}
+                    and expr.id not in imports and not binding_check(context, expr.id))
+        if isinstance(expr, ast.Subscript):
+            return (Resolver._safe_union_operand(expr.value, imports, context, binding_check) and
+                    Resolver._static_type_argument(expr.slice, imports, context, binding_check))
+        if isinstance(expr, ast.Attribute):
+            name = ast.unparse(expr)
+            root = name.split('.')[0]
+            canonical = imports.get(root, '') + name[len(root):]
+            return (canonical in {'os.PathLike'} and not binding_check(context, root)
+                    and not binding_check(context, name))
+        return False
+
+    @staticmethod
+    def _static_type_argument(expr: ast.AST, imports: dict[str, str], context: dict,
+                              binding_check) -> bool:
+        """Reject effectful type arguments; allow a narrow, provenance-checked union."""
+        if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
+            return (Resolver._safe_union_operand(expr.left, imports, context, binding_check) and
+                    Resolver._safe_union_operand(expr.right, imports, context, binding_check))
+        if isinstance(expr, (ast.Name, ast.Constant)):
+            return True
+        if isinstance(expr, ast.Attribute):
+            return Resolver._static_type_argument(expr.value, imports, context, binding_check)
+        if isinstance(expr, (ast.Tuple, ast.List)):
+            return all(Resolver._static_type_argument(x, imports, context, binding_check) for x in expr.elts)
+        if isinstance(expr, ast.Subscript):
+            return (Resolver._static_type_argument(expr.value, imports, context, binding_check) and
+                    Resolver._static_type_argument(expr.slice, imports, context, binding_check))
+        return False
+
+    def _bare_base_name(self, expr: ast.AST, imports: dict[str, str], context: dict) -> str | None:
+        """Only plain name/attribute bases and safe type subscripts are admitted."""
+        if isinstance(expr, ast.Subscript):
+            if not self._static_type_argument(expr.slice, imports, context, self._find_binding):
+                return None
+            expr = expr.value
+        if isinstance(expr, (ast.Name, ast.Attribute)):
+            return ast.unparse(expr)
+        return None
+
+    def _trusted_stdlib_import(self, cls: dict, root: str, origin: str) -> bool:
+        """No conditional/competing import may masquerade as a known stub."""
+        definitions = [s for s in self.symbols
+                       if s['file'] == cls['file'] and s['module'] == cls['module']
+                       and s.get('scope') == '<module>' and s['name'] == root
+                       and (s.get('line') or 0) < (cls.get('line') or 0)]
+        if definitions:
+            return False
+        options = [imp for imp in self.imports[cls['file']]
+                   if imp.get('local_name') == root
+                   and (imp.get('line') or 0) < (cls.get('line') or 0)
+                   and imp.get('scope') == '<module>']
+        return (len(options) == 1 and not options[0].get('control_depth')
+                and canonical_import(options[0]) == origin)
+
+    def _base_order(self, cls: dict) -> tuple[list[str], bool]:
+        """Keep declaration order and uncertainty; never drop an opaque base."""
         imports = self.imports_at({"file": cls['file'], "module": cls['module'], "scope": cls['scope'] or '<module>', "line": cls.get('line') or 0})
-        found = []
+        # Base expressions execute at class definition time, unlike a method
+        # body which can observe imports performed later during initialization.
+        for imp in self.imports[cls['file']]:
+            if (imp.get('line') or 0) >= (cls.get('line') or 0):
+                imports.pop(imp.get('local_name'), None)
+        found, complete = [], True
         for base in cls.get('bases', []):
-            if not base:
+            try:
+                expr = ast.parse(base or '', mode='eval').body
+            except SyntaxError:
+                complete = False
                 continue
-            base_candidates = self._resolve_reference(str(base), cls['module'], imports)
-            found.extend(s for s in base_candidates if s['kind'] == 'CLASS')
-        return found
+            context = {**cls, 'scope': cls.get('scope') or '<module>'}
+            base_name = self._bare_base_name(expr, imports, context)
+            if not base_name:
+                complete = False
+                continue
+            is_subscript = isinstance(expr, ast.Subscript)
+            # A subscription such as Base[T] is not the same thing as a base
+            # class unless its result is known to preserve the class origin.
+            root = base_name.split('.')[0]
+            if (self._find_binding(context, root) or
+                    (base_name != root and self._find_binding(context, base_name))):
+                complete = False
+                continue
+            imported_name = imports.get(root)
+            canonical_stdlib = ('.'.join([imported_name, *base_name.split('.')[1:]])
+                                if imported_name else None)
+            if canonical_stdlib in self._KNOWN_STDLIB_BASES:
+                if (canonical_stdlib.split('.')[0] in self.origins.modules or
+                        not self._trusted_stdlib_import(cls, root, imported_name)):
+                    complete = False
+                    continue
+                # Generic[T] resolves through typing.Generic.__class_getitem__;
+                # abc.ABC is not subscriptable.
+                if not is_subscript or canonical_stdlib == 'typing.Generic':
+                    found.append(canonical_stdlib)
+                else:
+                    complete = False
+                continue
+            if is_subscript and canonical_stdlib:
+                # Do not treat an arbitrary imported __class_getitem__ as an
+                # identity-preserving generic alias (PEP 560 __mro_entries__).
+                complete = False
+                continue
+            base_candidates = self._resolve_reference(base_name, cls['module'], imports)
+            if not base_candidates and cls.get('scope') != '<module>':
+                scope = (cls.get('scope') or '').split('.')
+                while scope and not base_candidates:
+                    base_candidates = self._lookup('.'.join([cls['module'], *scope, base_name]))
+                    scope.pop()
+            if len(base_candidates) == 1 and base_candidates[0]['kind'] == 'CLASS':
+                candidate = base_candidates[0]
+                if candidate['file'] == cls['file'] and candidate['line'] >= cls['line']:
+                    complete = False
+                elif is_subscript and not self._generic_alias_is_class(candidate):
+                    complete = False
+                else:
+                    found.append(candidate['canonical_name'])
+            elif not is_subscript and base_name == 'object' and root not in imports and not base_candidates:
+                found.append('builtins.object')
+            else:
+                complete = False
+        return found, complete
+
+    def _get_bases(self, cls: dict, seen: set[str] | None = None) -> list[dict]:
+        names, _ = self._base_order(cls)
+        return [self.classes[n] for n in names if n in self.classes]
+
+    def _mro(self, cls: dict, active: frozenset[str] = frozenset()) -> tuple[list[str], str]:
+        """C3: L(C) = C + merge(L(B1), ..., L(Bn), [B1,...,Bn]).
+
+        Unknown hierarchy and invalid hierarchy are distinct. Neither permits
+        a DFS fallback. object participates in merging but is never a node.
+        """
+        key = cls['canonical_name']
+        if key in active:
+            return [], 'invalid_cycle'
+        if key in self._mro_cache:
+            return self._mro_cache[key]
+        if cls.get('class_keywords') or cls.get('decorators'):
+            result = ([], 'unknown_class_customization')
+        else:
+            bases, complete = self._base_order(cls)
+            if not complete:
+                result = ([], 'unknown_base')
+            elif len(set(bases)) != len(bases):
+                result = ([], 'invalid_duplicate_base')
+            else:
+                bases = bases or ['builtins.object']
+                sequences, reason = [], 'complete'
+                for base in bases:
+                    order, status = ((['builtins.object'], 'complete') if base == 'builtins.object'
+                                     else ([base, 'builtins.object'], 'complete')
+                                     if base in self._KNOWN_STDLIB_BASES
+                                     else self._mro(self.classes[base], active | {key}))
+                    if status != 'complete':
+                        reason = status
+                        break
+                    sequences.append(list(order))
+                if reason != 'complete':
+                    result = ([], reason)
+                else:
+                    sequences.append(list(bases))
+                    order = [key]
+                    while any(sequences):
+                        sequences = [s for s in sequences if s]
+                        head = next((s[0] for s in sequences
+                                     if not any(s[0] in t[1:] for t in sequences)), None)
+                        if head is None:
+                            reason = 'invalid_c3_conflict'
+                            break
+                        order.append(head)
+                        for seq in sequences:
+                            if seq[0] == head:
+                                seq.pop(0)
+                    result = (order if reason == 'complete' else [], reason)
+        self._mro_cache[key] = result
+        return result
+
+    def _local_method(self, cls: dict, name: str) -> tuple[list[dict], bool]:
+        local = self._lookup(cls['canonical_name'] + '.' + name)
+        assignments = [a for a in self.assignments.get((cls['file'], cls['qualified_name']), [])
+                       if name in a.get('targets', [])]
+        # Non-method class attributes and descriptors stop inheritance lookup.
+        if assignments and (not local or max(a['line'] for a in assignments) >= max(s['line'] for s in local)):
+            return [], True
+        if local:
+            methods = [s for s in local if s['kind'] == 'METHOD'
+                       and not s.get('control_depth')
+                       and all(d in ('staticmethod', 'classmethod') for d in s.get('decorators', []))]
+            return methods, True
+        return [], False
+
+    def _lookup_mro(self, order: list[str], name: str) -> tuple[list[dict], list[str]]:
+        path = []
+        for key in order:
+            path.append(key)
+            if key == 'builtins.object':
+                break
+            if key in self._KNOWN_STDLIB_BASES:
+                # Only their known MRO position is modeled; no internal calls
+                # are emitted for methods defined by the stdlib classes.
+                continue
+            found, shadows = self._local_method(self.classes[key], name)
+            if shadows:
+                return found, path
+        return [], path
 
     def _find_method(self, cls: dict, name: str, seen: set[str] | None = None, include_self: bool = True) -> tuple[list[dict], list[str]]:
-        seen = set() if seen is None else seen
-        if cls['id'] in seen:
-            return [], []
-        seen.add(cls['id'])
-        path = [cls['canonical_name']]
-        if include_self:
-            local = [s for s in self._lookup(cls['canonical_name'] + '.' + name) if s['kind'] == 'METHOD']
-            if local:
-                return local, path
-        for base in self._get_bases(cls):
-            found, tail = self._find_method(base, name, seen, include_self=True)
+        order, reason = self._mro(cls)
+        if reason != 'complete':
+            # A direct ordinary method can still be a grounded may-call on an
+            # unknown base, but invalid/customized classes are not assumed valid.
+            if reason == 'unknown_base' and include_self:
+                local, _ = self._local_method(cls, name)
+                return local, [cls['canonical_name'], reason]
+            return [], [cls['canonical_name'], reason]
+        return self._lookup_mro(order if include_self else order[1:], name)
+
+    def _resolve_super(self, call: dict, owner: dict | None, imports: dict) -> tuple[list[dict], str, list[str]]:
+        """Resolve super after its anchor in each source-backed receiver MRO.
+
+        Method bodies are context-insensitive: self may be an instance of a
+        known subclass, so cooperative sibling dispatch is a may-call union.
+        Read original source because legacy callee_text erases call arguments.
+        """
+        fn = self.by_id.get(call.get('caller_id'), {})
+        if not owner or fn.get('scope') != owner['qualified_name']:
+            return [], 'super_context_unknown', []
+        if ('super' in imports or 'super' in fn.get('parameters', []) or
+                self._lookup(call['module'] + '.super') or self._find_binding(call, 'super')):
+            return [], 'super_shadowed', []
+        if (self._lookup(call['module'] + '.' + call['scope'] + '.super') or
+                any('super' in a.get('targets', [])
+                    for a in self.assignments.get((call['file'], call['scope']), []))):
+            return [], 'super_shadowed', []
+        try:
+            expr = ast.parse(call.get('source') or '', mode='eval').body
+        except SyntaxError:
+            return [], 'super_syntax_unknown', []
+        if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute)
+                and isinstance(expr.func.value, ast.Call)):
+            return [], 'super_syntax_unknown', []
+        proxy = expr.func.value
+        if not isinstance(proxy.func, ast.Name) or proxy.func.id != 'super' or proxy.keywords:
+            return [], 'super_syntax_unknown', []
+        params = fn.get('parameters', [])
+        anchor = owner
+        if not params or 'staticmethod' in fn.get('decorators', []):
+            return [], 'super_receiver_unknown', []
+        receiver = params[0]
+        if self._find_binding(call, receiver):
+            return [], 'super_receiver_rebound', []
+        if proxy.args:
+            if len(proxy.args) != 2 or not isinstance(proxy.args[1], ast.Name) or proxy.args[1].id != receiver:
+                return [], 'super_receiver_unknown', []
+            refs = self._resolve_reference(ast.unparse(proxy.args[0]), call['module'], imports)
+            if len(refs) != 1 or refs[0]['kind'] != 'CLASS':
+                return [], 'super_anchor_unknown', []
+            anchor = refs[0]
+        targets, trace = [], []
+        for cls in self.classes.values():
+            order, status = self._mro(cls)
+            if status != 'complete' or owner['canonical_name'] not in order or anchor['canonical_name'] not in order:
+                continue
+            tail = order[order.index(anchor['canonical_name']) + 1:]
+            found, path = self._lookup_mro(tail, expr.func.attr)
+            targets.extend(found)
             if found:
-                return found, path + tail
-        return [], path
+                trace.extend(['receiver:' + cls['canonical_name'], 'anchor:' + anchor['canonical_name'], *path])
+        return targets, 'super_c3_may_call' if targets else 'super_method_not_found', trace
 
     def _resolve_reference(self, name: str, module: str, imports: dict[str, str]) -> list[dict]:
         # Imported names must not fall back to accidental same-name definitions.
@@ -234,13 +560,7 @@ class Resolver:
         imports = self.imports_at(call)
         owner = self._owner_class(call)
         if callee.startswith('super().'):
-            if owner:
-                meth = callee.split('super().', 1)[1]
-                for base in self._get_bases(owner):
-                    found, path = self._find_method(base, meth)
-                    if found:
-                        return found, 'super_parent_method', [owner['canonical_name'], *path]
-            return [], 'super_method_not_found', []
+            return self._resolve_super(call, owner, imports)
         if callee.startswith(('self.', 'cls.')):
             if owner and callee.count('.') == 1:
                 meth = callee.split('.', 1)[1]
@@ -332,7 +652,44 @@ class Resolver:
             return [], 'external_or_dynamic_attribute', []
         return [], 'unsupported_dynamic_syntax', []
 
+    def _module_binding_at_call(self, call: dict, targets: list[dict]) -> list[dict]:
+        """Select the live, straight-line local definition at module evaluation.
+
+        Only same-file, unconditional duplicate functions are disambiguated.
+        Deferred function bodies cannot be resolved by comparing source lines.
+        """
+        result = []
+        for target in targets:
+            group = self._lookup(target['canonical_name'])
+            versions = [s for s in group if s['kind'] == target['kind']
+                        and s['file'] == call['file'] and s['module'] == call['module']]
+            if len(versions) <= 1 or not all(s.get('control_depth', 0) == 0 for s in versions):
+                result.append(target)
+                continue
+            # A function is bound *after* its defaults/decorators run. Calls
+            # on its own declaration line must see the previous definition.
+            prior = [s for s in versions if (s.get('line') or 0) < (call.get('line') or 0)]
+            if call.get('execution_phase') not in ('definition_default', 'definition_decorator',
+                                                     'definition_annotation'):
+                prior.extend(s for s in versions
+                             if (s.get('line') or 0) == (call.get('line') or 0)
+                             and (s.get('column') or 0) < (call.get('column') or 0))
+            if prior:
+                result.append(max(prior, key=lambda s: (s.get('line') or 0, s.get('column') or 0)))
+            # Otherwise the call predates all definitions and is unresolved.
+        return list({s['id']: s for s in result}.values())
+
     def build(self) -> dict:
+        from object_flow import ObjectFlow
+        object_flow = ObjectFlow(self, fields=True, dispatch=True)
+        object_results = object_flow.run()
+        self.return_summaries = object_flow.summaries
+        self.object_flow_stats = {'expression_steps': object_flow.steps,
+                                  'root_step_limit': object_flow.root_step_limit,
+                                  'recursion_or_budget_cutoffs': object_flow.cutoffs,
+                                  'generic_context_fallbacks': object_flow.generic_context_fallbacks,
+                                  'summarized_functions': len(object_flow.summaries),
+                                  'managed_calls': len(object_results)}
         nodes = [{"id": s['id'], "kind": s['kind'], "name": s['name'],
                   "canonical_name": s['canonical_name'], "file": s['file'],
                   "line": s.get('line')} for s in self.symbols]
@@ -365,11 +722,23 @@ class Resolver:
         for call in self.calls:
             top_level = not call.get('caller_id')
             caller_id = call.get('caller_id') or module_nodes[call['module']]
-            targets, reason, trace = self.resolve(call)
+            targets, reason, trace = object_results.get(call['id'], (None, None, None))
+            if targets is None:
+                targets, reason, trace = self.resolve(call)
+            elif targets:
+                legacy_targets, legacy_reason, legacy_trace = self.resolve(call)
+                if {t['id'] for t in targets} == {t['id'] for t in legacy_targets}:
+                    # Preserve established flow provenance for unchanged edges.
+                    targets, reason, trace = legacy_targets, legacy_reason, legacy_trace
+            # A proven-invalid C3 hierarchy cannot be instantiated. Unknown
+            # external bases still permit a source-backed class candidate.
+            targets = [t for t in targets if not (
+                t['kind'] == 'CLASS' and self._mro(t)[1].startswith('invalid'))]
             if top_level:
-                # A module initializer runs in source order: definitions below
-                # the call are not yet bound in that module. A full execution
-                # simulator is out of scope, but avoid an obvious false edge.
+                # Module initialization and definition-time expressions execute
+                # before later definitions are bound. Preserve an earlier
+                # definition even when the canonical name is later redefined.
+                targets = self._module_binding_at_call(call, targets)
                 targets = [t for t in targets if not (
                     t['module'] == call['module'] and (t.get('line') or 0) > (call.get('line') or 0))]
             # Repeated targets from two aliases don't create duplicate edges.
@@ -377,7 +746,9 @@ class Resolver:
             if not targets:
                 item = {"call_id": call['id'], "callee_text": call['callee_text'],
                         "file": call['file'], "line": call['line'],
-                        "reason": 'no_enclosing_function' if top_level else reason}
+                        "reason": 'no_enclosing_function' if top_level else reason,
+                        "execution_scope": call.get('execution_scope', call.get('scope')),
+                        "execution_phase": call.get('execution_phase', 'unspecified')}
                 if not top_level:
                     item['caller_id'] = caller_id
                 if top_level:
@@ -394,9 +765,17 @@ class Resolver:
             may_unknown = ('partial_type_candidates' in reason or any(o.get('kind') == 'unknown' for o in bound.get('options', [])))
             evidence = {"call_id": call['id'], "file": call['file'], "line": call['line'],
                         "column": call.get('column'), "source": call.get('source'),
-                        "rule": reason, "trace": trace, "module_level": top_level}
+                        "rule": reason, "trace": trace, "module_level": top_level,
+                        "execution_scope": call.get('execution_scope', call.get('scope')),
+                        "execution_phase": call.get('execution_phase', 'unspecified')}
+            if reason == 'super_c3_may_call':
+                evidence['certainty'] = 'receiver_hierarchy_may_call'
+            if reason == 'object_flow_may_call':
+                evidence['certainty'] = 'interprocedural_may_call'
             if top_level:
                 evidence['certainty'] = 'module_initialization_may_execute'
+            if call.get('execution_phase') == 'definition_annotation':
+                evidence['certainty'] = 'annotation_evaluation_version_dependent'
             if len(targets) > 1 and 'certainty' not in evidence:
                 evidence['certainty'] = 'multiple_possible_targets'
             if reason.startswith(('instance_flow_', 'flow_')):
@@ -447,5 +826,6 @@ class Resolver:
                 "module_level_resolved_sites": len(module_sites),
                 "collection_indirect_resolved_sites": len(collection_sites),
                 "nodes": nodes, "edges": edges,
+                "object_flow_stats": self.object_flow_stats,
                 "unresolved_calls": unresolved, "ambiguous_calls": ambiguous,
                 "conditional_calls": conditional}

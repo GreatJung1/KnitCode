@@ -1,0 +1,292 @@
+{
+  "repository": "14_field_factory",
+  "node_count": 7,
+  "edge_count": 6,
+  "total_call_sites": 3,
+  "resolved_call_sites": 3,
+  "unresolved_call_sites": 0,
+  "module_level_resolved_sites": 0,
+  "collection_indirect_resolved_sites": 0,
+  "nodes": [
+    {
+      "id": "CLASS:app.Worker",
+      "kind": "CLASS",
+      "name": "Worker",
+      "canonical_name": "app.Worker",
+      "file": "14_field_factory/app.py",
+      "line": 1
+    },
+    {
+      "id": "CLASS:app.Controller",
+      "kind": "CLASS",
+      "name": "Controller",
+      "canonical_name": "app.Controller",
+      "file": "14_field_factory/app.py",
+      "line": 7
+    },
+    {
+      "id": "METHOD:app.Worker.run",
+      "kind": "METHOD",
+      "name": "run",
+      "canonical_name": "app.Worker.run",
+      "file": "14_field_factory/app.py",
+      "line": 2
+    },
+    {
+      "id": "FUNCTION:app.make",
+      "kind": "FUNCTION",
+      "name": "make",
+      "canonical_name": "app.make",
+      "file": "14_field_factory/app.py",
+      "line": 4
+    },
+    {
+      "id": "METHOD:app.Controller.__init__",
+      "kind": "METHOD",
+      "name": "__init__",
+      "canonical_name": "app.Controller.__init__",
+      "file": "14_field_factory/app.py",
+      "line": 8
+    },
+    {
+      "id": "METHOD:app.Controller.execute",
+      "kind": "METHOD",
+      "name": "execute",
+      "canonical_name": "app.Controller.execute",
+      "file": "14_field_factory/app.py",
+      "line": 10
+    },
+    {
+      "id": "MODULE:app",
+      "kind": "MODULE",
+      "name": "app",
+      "canonical_name": "app",
+      "file": "14_field_factory/app.py",
+      "line": 1
+    }
+  ],
+  "edges": [
+    {
+      "source": "CLASS:app.Worker",
+      "target": "METHOD:app.Worker.run",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "14_field_factory/app.py",
+        "line": 2,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "CLASS:app.Controller",
+      "target": "METHOD:app.Controller.__init__",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "14_field_factory/app.py",
+        "line": 8,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "CLASS:app.Controller",
+      "target": "METHOD:app.Controller.execute",
+      "type": "CONTAINS",
+      "evidence": {
+        "file": "14_field_factory/app.py",
+        "line": 10,
+        "rule": "method_scope"
+      }
+    },
+    {
+      "source": "FUNCTION:app.make",
+      "target": "CLASS:app.Worker",
+      "type": "INSTANTIATES",
+      "evidence": {
+        "call_id": "CALL:14_field_factory/app.py:5:11:0",
+        "file": "14_field_factory/app.py",
+        "line": 5,
+        "column": 11,
+        "source": "Worker()",
+        "rule": "flow_reaching_assignment",
+        "trace": [
+          "reference:Worker@1"
+        ],
+        "module_level": false,
+        "certainty": "definite_within_supported_flow",
+        "reaching_definitions": [
+          {
+            "kind": "reference",
+            "name": "Worker",
+            "line": 1
+          }
+        ],
+        "may_be_unbound": false
+      }
+    },
+    {
+      "source": "METHOD:app.Controller.__init__",
+      "target": "FUNCTION:app.make",
+      "type": "CALLS",
+      "evidence": {
+        "call_id": "CALL:14_field_factory/app.py:9:22:1",
+        "file": "14_field_factory/app.py",
+        "line": 9,
+        "column": 22,
+        "source": "make()",
+        "rule": "flow_reaching_assignment",
+        "trace": [
+          "reference:make@4"
+        ],
+        "module_level": false,
+        "certainty": "definite_within_supported_flow",
+        "reaching_definitions": [
+          {
+            "kind": "reference",
+            "name": "make",
+            "line": 4
+          }
+        ],
+        "may_be_unbound": false
+      }
+    },
+    {
+      "source": "METHOD:app.Controller.execute",
+      "target": "METHOD:app.Worker.run",
+      "type": "CALLS",
+      "evidence": {
+        "call_id": "CALL:14_field_factory/app.py:11:8:2",
+        "file": "14_field_factory/app.py",
+        "line": 11,
+        "column": 8,
+        "source": "self.worker.run()",
+        "rule": "object_flow_may_call",
+        "trace": [
+          "allocation:14_field_factory/app.py:5:11 > 14_field_factory/app.py:9:22 > root:METHOD:app.Controller.execute",
+          "context:METHOD:app.Controller.execute",
+          "field",
+          "field:worker",
+          "receiver:app.Worker",
+          "return",
+          "return:app.make"
+        ],
+        "module_level": false,
+        "certainty": "interprocedural_may_call"
+      }
+    }
+  ],
+  "unresolved_calls": [],
+  "ambiguous_calls": [],
+  "conditional_calls": [],
+  "classification_summary": {
+    "total": 0,
+    "categories": {
+      "BUILTIN": 0,
+      "BUILTIN_METHOD": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0,
+      "INTERNAL_CANDIDATE": 0,
+      "INDIRECT_CALL": 0,
+      "FIELD_CHAIN": 0,
+      "RECEIVER_UNKNOWN": 0,
+      "MODULE_LEVEL": 0,
+      "DYNAMIC_UNKNOWN": 0
+    },
+    "original_reasons": {},
+    "scope_context": {},
+    "category_labels": {
+      "BUILTIN": "Python 내장 함수",
+      "BUILTIN_METHOD": "Python 기본 자료형 메서드 추정",
+      "STDLIB": "표준 라이브러리",
+      "EXTERNAL_IMPORT": "외부 의존성(import 근거)",
+      "INTERNAL_CANDIDATE": "내부 호출 후보(미검증)",
+      "INDIRECT_CALL": "변수에 담긴 함수/클래스 간접 호출",
+      "FIELD_CHAIN": "객체 필드의 연속 접근",
+      "RECEIVER_UNKNOWN": "객체 타입 또는 메서드 불명",
+      "MODULE_LEVEL": "최상위 호출의 출발점 미지원",
+      "DYNAMIC_UNKNOWN": "동적 호출/근거 부족"
+    },
+    "warning": "Classification is heuristic triage, not verified internal-call ground truth. No external code was executed; confidence is not a probability."
+  },
+  "call_statuses": [
+    {
+      "call_id": "CALL:14_field_factory/app.py:5:11:0",
+      "file": "14_field_factory/app.py",
+      "line": 5,
+      "callee_text": "Worker",
+      "caller_id": "FUNCTION:app.make",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.Worker"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:14_field_factory/app.py:9:22:1",
+      "file": "14_field_factory/app.py",
+      "line": 9,
+      "callee_text": "make",
+      "caller_id": "METHOD:app.Controller.__init__",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "FUNCTION:app.make"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:14_field_factory/app.py:11:8:2",
+      "file": "14_field_factory/app.py",
+      "line": 11,
+      "callee_text": "self.worker.run",
+      "caller_id": "METHOD:app.Controller.execute",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.Worker.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "MAY_CALL",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "object_flow_may_call"
+        ],
+        "coverage_caveat": "Partial/multiple/conditional candidates."
+      }
+    }
+  ],
+  "status_summary": {
+    "total": 3,
+    "statuses": {
+      "RESOLVED_INTERNAL": 3,
+      "KNOWN_NON_INTERNAL": 0,
+      "UNKNOWN": 0
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 0,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "commit": null
+}

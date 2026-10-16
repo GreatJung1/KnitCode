@@ -1,0 +1,151 @@
+{
+  "repository": "fixture",
+  "commit": null,
+  "summary": {
+    "total": 6,
+    "statuses": {
+      "RESOLVED_INTERNAL": 4,
+      "KNOWN_NON_INTERNAL": 1,
+      "UNKNOWN": 1
+    },
+    "known_non_internal_origins": {
+      "BUILTIN": 1,
+      "STDLIB": 0,
+      "EXTERNAL_IMPORT": 0
+    },
+    "warning": "Source-backed means evidence for static provenance or may-call edges, not proof of executable target, soundness, completeness, or accuracy. UNKNOWN is not equivalent to a missed internal call."
+  },
+  "calls": [
+    {
+      "call_id": "CALL:fixture/app.py:7:18:0",
+      "file": "fixture/app.py",
+      "line": 7,
+      "callee_text": "super().run",
+      "caller_id": "METHOD:app.D.go",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.C.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "MAY_CALL",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "super_c3_may_call"
+        ],
+        "coverage_caveat": "Partial/multiple/conditional candidates."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:7:18:1",
+      "file": "fixture/app.py",
+      "line": 7,
+      "callee_text": "super",
+      "caller_id": "METHOD:app.D.go",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [],
+      "legacy_category": "BUILTIN",
+      "status": "KNOWN_NON_INTERNAL",
+      "origin_kind": "BUILTIN",
+      "certainty": "PROVEN_STATIC_ORIGIN",
+      "evidence": {
+        "rule": "UNSHADOWED_BUILTIN_NAME",
+        "kind": "builtin_namespace",
+        "origin_name": "builtins.super",
+        "note": "Lexical builtin binding only; runtime namespace mutation is out of scope."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:10:10:2",
+      "file": "fixture/app.py",
+      "line": 10,
+      "callee_text": "D",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.D"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:11:4:3",
+      "file": "fixture/app.py",
+      "line": 11,
+      "callee_text": "obj.run",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "METHOD:app.C.run"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "instance_flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:12:12:4",
+      "file": "fixture/app.py",
+      "line": 12,
+      "callee_text": "E",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [
+        "CLASS:app.E"
+      ],
+      "legacy_category": null,
+      "status": "RESOLVED_INTERNAL",
+      "origin_kind": "INTERNAL",
+      "certainty": "SOURCE_BACKED",
+      "evidence": {
+        "kind": "graph_edges",
+        "rules": [
+          "flow_reaching_assignment"
+        ],
+        "coverage_caveat": "May-call targets; completeness and runtime dispatch not proven."
+      }
+    },
+    {
+      "call_id": "CALL:fixture/app.py:13:4:5",
+      "file": "fixture/app.py",
+      "line": 13,
+      "callee_text": "other.run",
+      "caller_id": "FUNCTION:app.example",
+      "scope_context": "IN_FUNCTION",
+      "target_ids": [],
+      "legacy_category": "RECEIVER_UNKNOWN",
+      "status": "UNKNOWN",
+      "origin_kind": "UNKNOWN",
+      "certainty": "UNVERIFIED",
+      "evidence": {
+        "rule": "shadowing_or_conditional_binding",
+        "conflicts": [
+          {
+            "type": "assignment",
+            "line": 12,
+            "control_depth": 0
+          }
+        ],
+        "note": "Legacy category is heuristic, not a verified origin."
+      }
+    }
+  ]
+}

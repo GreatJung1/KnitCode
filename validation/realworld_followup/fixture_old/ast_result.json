@@ -1,0 +1,122 @@
+{
+  "repository": "fixture_click",
+  "root": "/mnt/data/KnitCode_v25_verified_audit/validation/realworld_followup/fixture_click",
+  "source_roots": [],
+  "python_file_count": 3,
+  "parse_errors": [],
+  "files": [
+    {
+      "file": "fixture_click/src/click/__init__.py",
+      "source": "from .utils import echo\n",
+      "classes": [],
+      "functions": [],
+      "imports": [
+        {
+          "type": "IMPORT_FROM",
+          "module": "utils",
+          "name": "echo",
+          "alias": null,
+          "level": 1,
+          "scope": "<module>",
+          "control_depth": 0,
+          "line": 1,
+          "column": 0,
+          "end_line": 1,
+          "end_column": 23
+        }
+      ],
+      "calls": [],
+      "assignments": [],
+      "binding_hazards": []
+    },
+    {
+      "file": "fixture_click/src/click/utils.py",
+      "source": "def echo(value):\n    return value\n",
+      "classes": [],
+      "functions": [
+        {
+          "name": "echo",
+          "qualified_name": "echo",
+          "scope": "<module>",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 1,
+          "column": 0,
+          "end_line": 2,
+          "end_column": 16,
+          "kind": "FUNCTION",
+          "async": false,
+          "parameters": [
+            "value"
+          ],
+          "parameter_annotations": {},
+          "return_annotation": null
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "assignments": [],
+      "binding_hazards": []
+    },
+    {
+      "file": "fixture_click/tests/test_example.py",
+      "source": "import click\n\ndef demo():\n    return click.echo(\"Hello\")\n",
+      "classes": [],
+      "functions": [
+        {
+          "name": "demo",
+          "qualified_name": "demo",
+          "scope": "<module>",
+          "control_depth": 0,
+          "decorators": [],
+          "line": 3,
+          "column": 0,
+          "end_line": 4,
+          "end_column": 30,
+          "kind": "FUNCTION",
+          "async": false,
+          "parameters": [],
+          "parameter_annotations": {},
+          "return_annotation": null
+        }
+      ],
+      "imports": [
+        {
+          "type": "IMPORT",
+          "module": "click",
+          "name": null,
+          "alias": null,
+          "level": 0,
+          "scope": "<module>",
+          "control_depth": 0,
+          "line": 1,
+          "column": 0,
+          "end_line": 1,
+          "end_column": 12
+        }
+      ],
+      "calls": [
+        {
+          "callee_text": "click.echo",
+          "syntax_type": "ATTRIBUTE",
+          "scope": "demo",
+          "positional_argument_count": 1,
+          "keyword_arguments": [],
+          "source": "click.echo(\"Hello\")",
+          "line": 4,
+          "column": 11,
+          "end_line": 4,
+          "end_column": 30,
+          "flow": {
+            "variable": "click",
+            "binding": null,
+            "tracked": true
+          }
+        }
+      ],
+      "assignments": [],
+      "binding_hazards": []
+    }
+  ],
+  "commit": null
+}

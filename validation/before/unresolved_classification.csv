@@ -1,0 +1,2 @@
+﻿file,line,callee_text,caller_id,reason,category,category_label,scope_context,classifier_rule,confidence,candidate_targets,classification_evidence
+fixture/app.py,7,super,METHOD:app.D.go,unresolved_name_builtin_external_or_dynamic,BUILTIN,Python 내장 함수,IN_FUNCTION,python_builtin_unshadowed,high,,{'original_reason': 'unresolved_name_builtin_external_or_dynamic'}
