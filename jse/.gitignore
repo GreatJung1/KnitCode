@@ -1,0 +1,48 @@
+# Python runtime / environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+
+# Auto-generated analyzer outputs
+output/
+output_*/
+
+# Local duplicated code trees
+KnitCode_3/
+
+# Generated validation results
+/validation/after/
+/validation/before/
+/validation/object_flow/
+/validation/override_export/
+/validation/realworld_followup/fixture_new/
+/validation/realworld_followup/fixture_old/
+/validation/realworld_followup/fixture_audit/
+/validation/**/*.log
+/validation/**/*.csv
+/validation/**/*.json
+/validation/**/*.html
+/validation/**/*.patch
+/validation/**/*.pkl
+/validation/**/*.pkl.gz
+
+# Root-level experiment outputs
+*.log
+*.pyc
+/benchmark_*.csv
+/benchmark_*.json
+/stable_context_diff_*.csv
+/EXECUTION_CONTEXT_CHANGE.patch
+/*.patch
+
+# Local system/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
